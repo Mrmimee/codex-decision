@@ -1,0 +1,35 @@
+{
+  "name": "jev",
+  "version": "1.0.0",
+  "mcpServers": "./.mcp.json",
+  "description": "Jev decision engine for Codex: structured routing (Choice), risk checks (Noul), scoring, and a six-signal action guard, via a local MCP server.",
+  "author": {
+    "name": "Mrmimee"
+  },
+  "homepage": "https://github.com/Mrmimee/hermes-plugin-jev",
+  "repository": "https://github.com/Mrmimee/hermes-plugin-jev",
+  "license": "MIT",
+  "keywords": [
+    "jev",
+    "decision",
+    "routing",
+    "guard",
+    "agnes"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Jev",
+    "shortDescription": "Structured decisions and action-risk checks",
+    "longDescription": "Jev exposes the Jev decision engine to Codex through a local MCP server. Use it only when several execution paths are genuinely plausible, or when a risky action needs a structured second opinion.",
+    "developerName": "Mrmimee",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://github.com/Mrmimee/hermes-plugin-jev",
+    "defaultPrompt": [
+      "Use Jev to compare these execution paths."
+    ],
+    "brandColor": "#0B6E69"
+  }
+}

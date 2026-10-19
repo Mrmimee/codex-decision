@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "jev": {
+      "command": "cmd.exe",
+      "args": ["/d", "/c", "scripts\\run.cmd"],
+      "cwd": ".",
+      "enabled": true,
+      "env_vars": [
+        "AGNES_API_KEY",
+        "HERMES_HOME",
+        "LOCALAPPDATA",
+        "USERPROFILE",
+        "HOME",
+        "JEV_PYTHON",
+        "PATH"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 130
+    }
+  }
+}
