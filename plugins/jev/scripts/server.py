@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "jev"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.0.1"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
