@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Minimal stdio MCP server exposing the embedded Jev decision engine to Codex.
 
-The engine lives in ``../jev_engine`` (the tested upstream logic with its Hermes
-registration shim removed), so this plugin needs no Hermes installation. Tool
-definitions and dispatch share one table, so each tool is declared once.
+The engine is embedded in ``../jev_engine`` (the upstream decision logic with
+its Hermes registration shim removed), so the plugin depends on no Hermes
+installation. Tool definitions and dispatch share one table, so each tool is
+declared once.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "jev"
-SERVER_VERSION = "1.0.1"
+SERVER_VERSION = "1.1.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 

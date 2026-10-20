@@ -24,13 +24,29 @@ import time
 from pathlib import Path
 from typing import Any
 
-# 0. 引入 jev-starter 的 venv site-packages，保证运行独立性（兼容本机部署与跨机器克隆安装）
-_ADAPTER_SITE_PACKAGES = os.path.join(
-    os.path.expanduser("~"), "jev-starter", ".venv", "Lib", "site-packages"
-)
+def _extra_site_packages() -> list[str]:
+    """Optional site-packages dirs that may host ``system_one_adapter``.
 
-if os.path.isdir(_ADAPTER_SITE_PACKAGES) and _ADAPTER_SITE_PACKAGES not in sys.path:
-    sys.path.append(_ADAPTER_SITE_PACKAGES)
+    Ordered most-specific first. Missing dirs are ignored, and a dir is only
+    added when it actually contains the adapter.
+    """
+    home = Path.home()
+    candidates = [
+        os.environ.get("JEV_SITE_PACKAGES"),
+        os.environ.get("JEV_VENV") and str(Path(os.environ["JEV_VENV"]) / "Lib" / "site-packages"),
+        home / "jev-starter" / ".venv" / "Lib" / "site-packages",
+        home / ".jev" / "venv" / "Lib" / "site-packages",
+    ]
+    return [
+        str(Path(p).expanduser())
+        for p in candidates
+        if p and (Path(p).expanduser() / "system_one_adapter").is_dir()
+    ]
+
+
+for _path in _extra_site_packages():
+    if _path not in sys.path:
+        sys.path.append(_path)
 
 _adapter_available = True
 try:
@@ -55,20 +71,29 @@ _ENGINE_NONE = "none"     # 无可用引擎：直接报错，不做离线兜底
 
 # 1. 缓存路径与黑匣子日志路径
 def _get_cache_dir() -> Path:
-    """获取 Hermes 缓存目录（优先 AppData/Local/hermes/cache，兼容 ~/.hermes/cache）"""
-    hermes_home = os.environ.get("HERMES_HOME")
-    if hermes_home:
-        p = Path(hermes_home) / "cache"
-        if p.parent.exists():
-            p.mkdir(parents=True, exist_ok=True)
-            return p
-    app_cache = Path.home() / "AppData" / "Local" / "hermes" / "cache"
-    if app_cache.parent.exists():
-        app_cache.mkdir(parents=True, exist_ok=True)
-        return app_cache
-    fallback = Path.home() / ".hermes" / "cache"
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback
+    """Jev 自己的状态目录（插件更新不会清空）。
+
+    优先 JEV_STATE_DIR，其次 Codex 在用户数据目录下的专属目录，最后用户目录兜底。
+    """
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    candidates = [
+        os.environ.get("JEV_STATE_DIR"),
+        Path(local_app_data) / "codex-jev" / "jev" if local_app_data else None,
+        Path.home() / ".jev" / "cache",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".write-test"
+            probe.touch()
+            probe.unlink()
+        except OSError:
+            continue
+        return path
+    raise RuntimeError("Jev 无法创建可写状态目录，请设置 JEV_STATE_DIR")
 
 
 _CACHE_DIR = _get_cache_dir()

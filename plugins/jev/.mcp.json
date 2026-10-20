@@ -7,11 +7,13 @@
       "enabled": true,
       "env_vars": [
         "AGNES_API_KEY",
-        "HERMES_HOME",
         "LOCALAPPDATA",
         "USERPROFILE",
         "HOME",
         "JEV_PYTHON",
+        "JEV_STATE_DIR",
+        "JEV_SITE_PACKAGES",
+        "JEV_VENV",
         "PATH"
       ],
       "env": {

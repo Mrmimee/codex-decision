@@ -9,17 +9,23 @@ tools to Codex through a local stdio server:
 
 The engine (`plugins/jev/jev_engine/`) is the tested upstream
 [Hermes `jev` plugin](https://github.com/Mrmimee/hermes-plugin-jev) logic with
-its Hermes registration shim removed, so the plugin needs no Hermes
-installation. Only the transport layer (the MCP server and skill) is
-Codex-specific.
+its Hermes registration shim removed. Only the transport layer (the MCP server
+and skill) is Codex-specific.
 
+### No Hermes required
+
+This plugin is fully self-contained. It does not read, write, or import
+anything from Hermes:
+
+- Cache and audit log live in `%LOCALAPPDATA%\codex-jev\jev\` (override with
+  `JEV_STATE_DIR`), outside the plugin cache so they survive updates.
+- `system_one_adapter` is resolved from `JEV_VENV` / `JEV_SITE_PACKAGES`, or a
+  local `~/jev-starter` or `~/.jev` venv — none of which are Hermes paths.
 ## Requirements
 
-- A Python interpreter that can `import system_one_adapter`. By default the
-  launcher looks for `%USERPROFILE%\jev-starter\.venv` then `py`/`python` on
-  PATH. Set `JEV_PYTHON` to override.
-- `AGNES_API_KEY` in the environment, or a desktop `apikey.txt` with an
-  `AgnesAi` entry (the engine reads this fallback itself).
+- Python with `system-one-adapter[openai]` installed. The launcher picks, in
+  order: `JEV_PYTHON`, `%USERPROFILE%\jev-starter\.venv`, `py -3`, `python`.
+- `AGNES_API_KEY` in the environment.
 
 ## Install into Codex
 
