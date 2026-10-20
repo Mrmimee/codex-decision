@@ -1,6 +1,6 @@
-"""Jev/TypeSafe AI 决策小脑 Hermes 插件。
+"""Jev/TypeSafe AI 决策小脑（Codex 内嵌引擎）。
 
-在 Hermes 注册 `jev` 工具集，允许模型在毫秒级做出"单选 (Choice)"、"打分 (Score)"、"是非率 (Noul)"决策。
+供 `scripts/server.py` 通过 MCP 暴露"单选 (Choice)"、"打分 (Score)"、"是非率 (Noul)"决策。
 支持单题/多题并发打满（1 次网络往返裁决多个问题），具备双层持久化磁盘缓存、8 秒硬超时熔断与黑匣子审计日志。
 
 引擎（`system_one_adapter` → Agnes 3.0 Flash，结果里带 `engine` 字段）：
@@ -717,36 +717,3 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
         return _failure_json("jev_guard", state, exc, timeout)
 
 
-def register(ctx) -> None:
-    """注册 Jev 工具与配套技能"""
-    ctx.register_tool(
-        name="jev",
-        toolset="jev",
-        schema=JEV_SCHEMA,
-        handler=_handle_jev,
-        check_fn=_jev_tool_available,
-        emoji="🧠",
-    )
-    ctx.register_tool(
-        name="jev_guard",
-        toolset="jev",
-        schema=JEV_GUARD_SCHEMA,
-        handler=_handle_jev_guard,
-        check_fn=None,  # 始终注册：可用时走在线六信号裁决，不可用时明确返回 error
-        emoji="🛡️",
-    )
-
-    # 捆绑技能：随插件分发（克隆仓库即有），插件启用即以 jev:jev-decision-engine 出现在技能列表。
-    # 技能文件缺失不应影响工具注册，因此整段兜底。
-    try:
-        skill_md = Path(__file__).resolve().parent / "skills" / "jev-decision-engine" / "SKILL.md"
-        if skill_md.exists():
-            ctx.register_skill(
-                "jev-decision-engine",
-                skill_md,
-                "Use when a choice has real uncertainty (which tool or path to take) "
-                "or a risky action needs a structured second opinion before executing.",
-                {"name": "jev-decision-engine"},
-            )
-    except Exception:
-        pass

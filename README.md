@@ -7,10 +7,11 @@ tools to Codex through a local stdio server:
   batched in a single round-trip.
 - `jev_guard` — a six-signal action gate returning `allow` / `ask` / `deny`.
 
-The engine (`plugins/jev/jev_engine/`) is a byte-for-byte copy of the tested
-[Hermes `jev` plugin](https://github.com/Mrmimee/hermes-plugin-jev), so the
-plugin needs no Hermes installation. Only the transport layer (the MCP server
-and skill) is Codex-specific.
+The engine (`plugins/jev/jev_engine/`) is the tested upstream
+[Hermes `jev` plugin](https://github.com/Mrmimee/hermes-plugin-jev) logic with
+its Hermes registration shim removed, so the plugin needs no Hermes
+installation. Only the transport layer (the MCP server and skill) is
+Codex-specific.
 
 ## Requirements
 

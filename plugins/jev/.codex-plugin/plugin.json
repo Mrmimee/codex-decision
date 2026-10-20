@@ -6,8 +6,8 @@
   "author": {
     "name": "Mrmimee"
   },
-  "homepage": "https://github.com/Mrmimee/hermes-plugin-jev",
-  "repository": "https://github.com/Mrmimee/hermes-plugin-jev",
+  "homepage": "https://github.com/Mrmimee/codex-jev",
+  "repository": "https://github.com/Mrmimee/codex-jev",
   "license": "MIT",
   "keywords": [
     "jev",
@@ -26,7 +26,7 @@
     "capabilities": [
       "Read"
     ],
-    "websiteURL": "https://github.com/Mrmimee/hermes-plugin-jev",
+    "websiteURL": "https://github.com/Mrmimee/codex-jev",
     "defaultPrompt": [
       "Use Jev to compare these execution paths."
     ],

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Minimal stdio MCP server exposing the vendored Jev decision engine to Codex.
+"""Minimal stdio MCP server exposing the embedded Jev decision engine to Codex.
 
-The engine lives in ``../jev_engine`` (a byte-for-byte copy of the tested Hermes
-plugin) so this plugin is self-contained and needs no Hermes installation.
-Tool definitions and dispatch are driven by one table, so each tool is declared
-in exactly one place.
+The engine lives in ``../jev_engine`` (the tested upstream logic with its Hermes
+registration shim removed), so this plugin needs no Hermes installation. Tool
+definitions and dispatch share one table, so each tool is declared once.
 """
 from __future__ import annotations
 
@@ -20,10 +19,10 @@ DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 # MCP tool name -> (schema attribute, handler attribute) on the engine.
-TOOLS = (
-    ("jev", "JEV_SCHEMA", "_handle_jev"),
-    ("jev_guard", "JEV_GUARD_SCHEMA", "_handle_jev_guard"),
-)
+TOOLS = {
+    "jev": ("JEV_SCHEMA", "_handle_jev"),
+    "jev_guard": ("JEV_GUARD_SCHEMA", "_handle_jev_guard"),
+}
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
@@ -36,20 +35,24 @@ def load_engine() -> Any:
 
 
 def tool_definitions(engine: Any) -> list[dict[str, Any]]:
-    return [
-        {
-            "name": name,
-            "description": getattr(engine, schema_attr)["description"],
-            "inputSchema": getattr(engine, schema_attr)["parameters"],
-        }
-        for name, schema_attr, _ in TOOLS
-    ]
+    definitions = []
+    for name, (schema_attr, _) in TOOLS.items():
+        schema = getattr(engine, schema_attr)
+        definitions.append(
+            {
+                "name": name,
+                "description": schema["description"],
+                "inputSchema": schema["parameters"],
+            }
+        )
+    return definitions
 
 
 def call_tool(engine: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    handler_attr = next((h for tool, _, h in TOOLS if tool == name), None)
-    if handler_attr is None:
-        raise KeyError(f"Unknown tool: {name}")
+    try:
+        _, handler_attr = TOOLS[name]
+    except KeyError:
+        raise KeyError(f"Unknown tool: {name}") from None
     payload = getattr(engine, handler_attr)(arguments)
     try:
         data = json.loads(payload)
