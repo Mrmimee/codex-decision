@@ -62,4 +62,7 @@ Do not paste raw JSON unless the user asks for it.
 
 ## Availability
 
-The MCP adapter uses the existing Jev implementation and its `system_one_adapter` dependency. It needs `AGNES_API_KEY` or the configured desktop `apikey.txt` entry. A missing key or engine returns an explicit error, not a fallback verdict.
+The embedded engine needs `AGNES_API_KEY` (or `JEV_KEY_FILE` pointing at a
+single-line key file) and an importable `system_one_adapter`. It never scans
+your Desktop or any other location for secrets. A missing key, missing engine,
+timeout, or failed call returns an explicit `error`, not a fallback verdict.

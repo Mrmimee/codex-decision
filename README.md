@@ -21,11 +21,14 @@ anything from Hermes:
   `JEV_STATE_DIR`), outside the plugin cache so they survive updates.
 - `system_one_adapter` is resolved from `JEV_VENV` / `JEV_SITE_PACKAGES`, or a
   local `~/jev-starter` or `~/.jev` venv — none of which are Hermes paths.
+
 ## Requirements
 
 - Python with `system-one-adapter[openai]` installed. The launcher picks, in
   order: `JEV_PYTHON`, `%USERPROFILE%\jev-starter\.venv`, `py -3`, `python`.
-- `AGNES_API_KEY` in the environment.
+- `AGNES_API_KEY` in the environment. For headless setups that cannot export
+  it, point `JEV_KEY_FILE` at a single-line key file. The engine never scans
+  your Desktop or any other location for secrets.
 
 ## Install into Codex
 

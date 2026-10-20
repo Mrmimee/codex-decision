@@ -10,12 +10,17 @@ from __future__ import annotations
 
 import importlib
 import json
+import warnings
 import sys
 from pathlib import Path
 from typing import Any
 
+# The adapter SDK emits third-party Pydantic serializer warnings on stderr on
+# every call. They are noise for an MCP server: stdout carries the protocol.
+warnings.filterwarnings("ignore", message=r"Pydantic serializer warnings")
+
 SERVER_NAME = "jev"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.2.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 

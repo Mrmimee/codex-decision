@@ -210,17 +210,18 @@ def _log_journal(entry: dict[str, Any]) -> None:
 
 
 def _get_agnes_key() -> str:
-    """提取用户的 AGNES_API_KEY"""
-    key = os.environ.get("AGNES_API_KEY")
+    """读取 Agnes 密钥：只接受显式配置，绝不扫描桌面或任意文件。
+
+    顺序：AGNES_API_KEY 环境变量 > JEV_KEY_FILE 指定的单行密钥文件。
+    """
+    key = os.environ.get("AGNES_API_KEY", "").strip()
     if key:
         return key
-    # 兼容 OneDrive 重定向与原生英文/中文桌面路径
-    for key_file in (Path.home() / "OneDrive" / "桌面" / "apikey.txt", Path.home() / "Desktop" / "apikey.txt"):
-        if key_file.exists():
-            lines = key_file.read_text(encoding="utf-8").splitlines()
-            for i, line in enumerate(lines):
-                if "AgnesAi" in line and i + 1 < len(lines):
-                    return lines[i + 1].strip()
+    key_file = os.environ.get("JEV_KEY_FILE")
+    if key_file:
+        path = Path(key_file).expanduser()
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip()
     return ""
 
 

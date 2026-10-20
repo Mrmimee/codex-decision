@@ -14,6 +14,7 @@
         "JEV_STATE_DIR",
         "JEV_SITE_PACKAGES",
         "JEV_VENV",
+        "JEV_KEY_FILE",
         "PATH"
       ],
       "env": {

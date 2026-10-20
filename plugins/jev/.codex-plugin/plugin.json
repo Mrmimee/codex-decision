@@ -1,6 +1,6 @@
 {
   "name": "jev",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "mcpServers": "./.mcp.json",
   "description": "Jev decision engine for Codex: structured routing (Choice), risk checks (Noul), scoring, and a six-signal action guard, via a local MCP server.",
   "author": {
