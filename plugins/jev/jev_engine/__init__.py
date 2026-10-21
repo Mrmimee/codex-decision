@@ -64,9 +64,39 @@ except Exception:
 _BASE_URL = "https://apihub.agnes-ai.com/v1"
 _MODEL_NAME = "agnes-3.0-flash"
 _DEFAULT_TIMEOUT_SECONDS = 8.0
+_DEFAULT_REVIEW_MIN_CONFIDENCE = 0.75
+_DEFAULT_REVIEW_ABSTAIN_BELOW = 0.5
 
 _ENGINE_AGNES = "agnes"   # 唯一引擎：system_one_adapter → Agnes 3.0 Flash
 _ENGINE_NONE = "none"     # 无可用引擎：直接报错，不做离线兜底
+
+_REVIEW_LIMITS = {
+    "point": 64,
+    "question": 500,
+    "option_id": 64,
+    "option_description": 500,
+    "options": 8,
+    "evidence_items": 12,
+    "evidence_fact": 1200,
+    "evidence_total": 6000,
+    "constraints": 10,
+    "constraint": 500,
+    "constraints_total": 2500,
+}
+_POINT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+_REVIEW_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._-]{8,}"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"),
+    re.compile(r"\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{16,}"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{16,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{20,}"),
+    re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|secret|password|passwd)\b\s*[:=]\s*[^\s,;\"']{6,}"),
+)
 
 
 # 1. 缓存路径与黑匣子日志路径
@@ -466,6 +496,85 @@ JEV_GUARD_SCHEMA = {
     },
 }
 
+# 复核工具：吸收 decision-review 的“主模型预选 + 独立证据复核”协议，
+# 但仍由 Jev/Agnes 给出结构化 Choice 结果，不引入 DSH 或第二个网关。
+JEV_REVIEW_SCHEMA = {
+    "name": "jev_review",
+    "description": (
+        "对主模型已经形成的预选做独立复核。适用于两个以上合法候选、"
+        "证据可能冲突、或用户没有明确选择且结果会实质影响后续动作的场景。"
+        "调用前先独立给出 primaryChoice；reviewer 只返回 recommendation、"
+        "confidence、probabilities 和 adoptable 阈值提示，主模型保留最终决定权。"
+        "不要用于权限审批、凭据、写操作或网络目标的放行。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "point": {
+                "type": "string",
+                "description": "决策点名称，如 candidate_selection、entity_resolution、plan_consistency_review。",
+            },
+            "question": {
+                "type": "string",
+                "description": "需要复核的具体决策问题。",
+            },
+            "primaryChoice": {
+                "type": "string",
+                "description": "主模型在复核前已经独立形成的候选 id。",
+            },
+            "options": {
+                "type": "array",
+                "description": "2 到 8 个合法候选，id 必须唯一。",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "description": {"type": "string"},
+                        "evidenceRefs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["id", "description"],
+                },
+            },
+            "evidence": {
+                "type": "array",
+                "description": "可验证证据，id 必须唯一；不要放凭据或无关个人数据。",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "fact": {"type": "string"},
+                    },
+                    "required": ["id", "fact"],
+                },
+            },
+            "constraints": {
+                "type": "array",
+                "description": "必须满足的硬约束或用户明确要求。",
+                "items": {"type": "string"},
+            },
+            "minConfidence": {
+                "type": "number",
+                "description": "达到该置信度才标记 adoptable，默认 0.75。",
+            },
+            "abstainBelow": {
+                "type": "number",
+                "description": "低于该置信度时弃权，默认 0.5。",
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["advisory", "shadow"],
+                "description": "advisory 返回建议；shadow 只记录复核，不向主模型透出建议。",
+            },
+            "timeout_seconds": dict(_TIMEOUT_PARAM),
+            "no_cache": dict(_NO_CACHE_PARAM),
+        },
+        "required": ["point", "question", "primaryChoice", "options"],
+    },
+}
+
 
 def _build_provider() -> Any:
     """快速构建指向 Agnes 云端的 Provider"""
@@ -510,6 +619,247 @@ def _timeout_from_args(args: dict, default: float = _DEFAULT_TIMEOUT_SECONDS) ->
         return max(0.1, min(float(args.get("timeout_seconds") or default), 120.0))
     except (ValueError, TypeError):
         return default
+
+
+def _review_string(
+    value: Any,
+    field: str,
+    max_length: int,
+    pattern: re.Pattern[str] | None = None,
+) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} 必须是字符串")
+    normalized = value.strip()
+    if not normalized or len(normalized) > max_length:
+        raise ValueError(f"{field} 长度必须在 1 到 {max_length} 之间")
+    if pattern is not None and not pattern.fullmatch(normalized):
+        raise ValueError(f"{field} 格式不合法")
+    return normalized
+
+
+def _review_string_list(
+    value: Any,
+    field: str,
+    max_items: int,
+    max_item_length: int,
+    total_limit: int | None = None,
+) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > max_items:
+        raise ValueError(f"{field} 数量不能超过 {max_items}")
+    normalized = [
+        _review_string(item, f"{field}[{index}]", max_item_length)
+        for index, item in enumerate(value)
+    ]
+    if total_limit is not None and sum(len(item) for item in normalized) > total_limit:
+        raise ValueError(f"{field} 超过总字符预算 {total_limit}")
+    return normalized
+
+
+def _review_number(value: Any, field: str, default: float, minimum: float, maximum: float) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field} 必须是数字")
+    try:
+        number = float(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"{field} 必须是数字") from None
+    if not 0 <= minimum <= number <= maximum <= 1:
+        raise ValueError(f"{field} 必须在 {minimum} 到 {maximum} 之间")
+    return number
+
+
+def _normalize_review_args(args: dict[str, Any]) -> tuple[dict[str, Any], float, float, bool]:
+    """Validate review input before it can reach the network.
+
+    This deliberately returns compact, normalized data: the reviewer should
+    only see the question, candidates, evidence and constraints it needs.
+    """
+    point = _review_string(args.get("point"), "point", _REVIEW_LIMITS["point"], _POINT_PATTERN)
+    question = _review_string(args.get("question"), "question", _REVIEW_LIMITS["question"])
+    primary_choice = _review_string(
+        args.get("primaryChoice"),
+        "primaryChoice",
+        _REVIEW_LIMITS["option_id"],
+        _ID_PATTERN,
+    )
+    raw_options = args.get("options")
+    if not isinstance(raw_options, list) or not 2 <= len(raw_options) <= _REVIEW_LIMITS["options"]:
+        raise ValueError(f"options 数量必须在 2 到 {_REVIEW_LIMITS['options']} 之间")
+    options: list[dict[str, Any]] = []
+    for index, raw_option in enumerate(raw_options):
+        if not isinstance(raw_option, dict):
+            raise ValueError(f"options[{index}] 必须是对象")
+        option_id = _review_string(
+            raw_option.get("id"),
+            f"options[{index}].id",
+            _REVIEW_LIMITS["option_id"],
+            _ID_PATTERN,
+        )
+        description = _review_string(
+            raw_option.get("description"),
+            f"options[{index}].description",
+            _REVIEW_LIMITS["option_description"],
+        )
+        evidence_refs = _review_string_list(
+            raw_option.get("evidenceRefs"),
+            f"options[{index}].evidenceRefs",
+            _REVIEW_LIMITS["evidence_items"],
+            _REVIEW_LIMITS["option_id"],
+            _REVIEW_LIMITS["evidence_items"] * _REVIEW_LIMITS["option_id"],
+        )
+        options.append({"id": option_id, "description": description, "evidenceRefs": evidence_refs})
+    option_ids = [option["id"] for option in options]
+    if len(set(option_ids)) != len(option_ids):
+        raise ValueError("候选 id 不能重复")
+    if primary_choice not in option_ids:
+        raise ValueError("primaryChoice 必须属于候选集合")
+
+    raw_evidence = args.get("evidence")
+    if raw_evidence is None:
+        raw_evidence = []
+    if not isinstance(raw_evidence, list) or len(raw_evidence) > _REVIEW_LIMITS["evidence_items"]:
+        raise ValueError(f"evidence 数量不能超过 {_REVIEW_LIMITS['evidence_items']}")
+    evidence: list[dict[str, str]] = []
+    for index, raw_item in enumerate(raw_evidence):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"evidence[{index}] 必须是对象")
+        evidence.append({
+            "id": _review_string(
+                raw_item.get("id"),
+                f"evidence[{index}].id",
+                _REVIEW_LIMITS["option_id"],
+                _ID_PATTERN,
+            ),
+            "fact": _review_string(
+                raw_item.get("fact"),
+                f"evidence[{index}].fact",
+                _REVIEW_LIMITS["evidence_fact"],
+            ),
+        })
+    evidence_ids = [item["id"] for item in evidence]
+    if len(set(evidence_ids)) != len(evidence_ids):
+        raise ValueError("证据 id 不能重复")
+    if sum(len(item["fact"]) for item in evidence) > _REVIEW_LIMITS["evidence_total"]:
+        raise ValueError(f"evidence 超过总字符预算 {_REVIEW_LIMITS['evidence_total']}")
+    evidence_id_set = set(evidence_ids)
+    for option in options:
+        for reference in option["evidenceRefs"]:
+            if reference not in evidence_id_set:
+                raise ValueError(f"候选 {option['id']} 引用了不存在的证据 {reference}")
+
+    constraints = _review_string_list(
+        args.get("constraints"),
+        "constraints",
+        _REVIEW_LIMITS["constraints"],
+        _REVIEW_LIMITS["constraint"],
+        _REVIEW_LIMITS["constraints_total"],
+    )
+    outbound_text = [
+        question,
+        *(option["description"] for option in options),
+        *(item["fact"] for item in evidence),
+        *constraints,
+    ]
+    if any(pattern.search(text) for text in outbound_text for pattern in _REVIEW_SECRET_PATTERNS):
+        raise ValueError("复核输入疑似包含凭据或密钥")
+    min_confidence = _review_number(
+        args.get("minConfidence"),
+        "minConfidence",
+        _DEFAULT_REVIEW_MIN_CONFIDENCE,
+        0.0,
+        1.0,
+    )
+    abstain_below = _review_number(
+        args.get("abstainBelow"),
+        "abstainBelow",
+        _DEFAULT_REVIEW_ABSTAIN_BELOW,
+        0.0,
+        1.0,
+    )
+    if abstain_below > min_confidence:
+        raise ValueError("abstainBelow 不能高于 minConfidence")
+    mode = args.get("mode", "advisory")
+    if mode not in ("advisory", "shadow"):
+        raise ValueError("mode 必须是 advisory 或 shadow")
+    return (
+        {
+            "point": point,
+            "question": question,
+            "primaryChoice": primary_choice,
+            "options": options,
+            "evidence": evidence,
+            "constraints": constraints,
+        },
+        min_confidence,
+        abstain_below,
+        mode == "shadow",
+    )
+
+
+def _review_state_and_question(
+    review: dict[str, Any],
+) -> tuple[dict[str, Any], Choice]:
+    state = {
+        "point": review["point"],
+        "question": review["question"],
+        "evidence": [item["fact"] for item in review["evidence"]],
+        "constraints": review["constraints"],
+    }
+    instructions = (
+        "根据 state 中的 question、evidence 与 constraints 独立评估 criteria 中的候选，"
+        "选择证据最充分的选项。"
+        "约束和可验证证据优先于偏好，不得根据候选顺序选择；证据不足时保持低置信度。"
+    )
+    criteria = {option["id"]: option["description"] for option in review["options"]}
+    return state, Choice(instructions=instructions, criteria=criteria)
+
+
+def _review_projection(
+    answer: Any,
+    review: dict[str, Any],
+    min_confidence: float,
+    abstain_below: float,
+    shadow: bool,
+) -> dict[str, Any]:
+    recommendation = getattr(answer, "choice", None)
+    confidence = getattr(answer, "confidence", None)
+    if recommendation not in {option["id"] for option in review["options"]}:
+        raise ValueError("复核结果不在候选集合内")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        raise ValueError("复核结果缺少有效 confidence")
+    confidence = float(confidence)
+    if not 0 <= confidence <= 1:
+        raise ValueError("复核结果 confidence 越界")
+    result: dict[str, Any] = {
+        "point": review["point"],
+        "primaryChoice": review["primaryChoice"],
+        "recommendation": recommendation,
+        "confidence": confidence,
+        "agreement": recommendation == review["primaryChoice"],
+        "mode": "shadow" if shadow else "advisory",
+        "minConfidence": min_confidence,
+        "abstainBelow": abstain_below,
+        "adoptable": not shadow and confidence >= min_confidence,
+    }
+    if confidence < abstain_below:
+        result["status"] = "abstained"
+        result["reasonCode"] = "insufficient_evidence"
+    elif shadow:
+        result["status"] = "shadow"
+    elif confidence >= min_confidence:
+        result["status"] = "ok"
+    else:
+        result["status"] = "not_adoptable"
+        result["reasonCode"] = "low_confidence"
+    if shadow:
+        result.pop("recommendation", None)
+        result.pop("confidence", None)
+        result.pop("agreement", None)
+        result.pop("probabilities", None)
+    return result
 
 
 def _cache_hit_json(tool: str, args: dict, state: Any, use_cache: bool):
@@ -741,5 +1091,101 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
         return _dump(result)
     except Exception as exc:
         return _failure_json("jev_guard", state, exc, timeout)
+
+
+def _handle_jev_review(args: dict[str, Any], **kwargs) -> str:
+    """Run a pre-choice review and project it into an explicit confidence band."""
+    try:
+        review, min_confidence, abstain_below, shadow = _normalize_review_args(args)
+    except ValueError as exc:
+        _log_journal({"tool": "jev_review", "error": "invalid_input", "reason": str(exc)})
+        return _dump({
+            "error": f"复核输入无效：{exc}",
+            "status": "rejected",
+            "adoptable": False,
+        })
+
+    state, question = _review_state_and_question(review)
+    timeout = _timeout_from_args(args)
+    use_cache = not args.get("no_cache", False)
+    cache_args = {
+        "state": state,
+        "review": {
+            "point": review["point"],
+            "primaryChoice": review["primaryChoice"],
+            "options": review["options"],
+            "evidence": review["evidence"],
+            "constraints": review["constraints"],
+        },
+    }
+    cached, cache_key = _cache_hit_json("jev_review", cache_args, state, use_cache)
+    if cached is not None:
+        return cached
+    if not _jev_tool_available():
+        _log_journal({"tool": "jev_review", "error": "no_engine", "point": review["point"]})
+        return _dump({
+            "error": "Jev 在线复核不可用：当前没有可用引擎，本次未做任何复核。",
+            "status": "unavailable",
+            "point": review["point"],
+            "primaryChoice": review["primaryChoice"],
+            "adoptable": False,
+            "engine": _ENGINE_NONE,
+            "hint": "需要 AGNES_API_KEY + 可导入的 system_one_adapter；错误不是放行。",
+        })
+
+    try:
+        started = time.time()
+        response = _execute_system_one_with_timeout(
+            client=SystemOneAdapterClient(structured_outputs=False, llm_answer_mode="discrete"),
+            state=state,
+            questions={"review": question},
+            provider=_build_provider(),
+            timeout=timeout,
+        )
+        elapsed = round(time.time() - started, 2)
+        answer = getattr(response, "choices", {}).get("review")
+        if answer is None:
+            raise ValueError("复核响应缺少 review 结果")
+        result = _review_projection(answer, review, min_confidence, abstain_below, shadow)
+        probabilities = getattr(answer, "probabilities", None)
+        if not shadow and isinstance(probabilities, dict):
+            result["probabilities"] = {
+                key: float(value)
+                for key, value in probabilities.items()
+                if key in {option["id"] for option in review["options"]}
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+            }
+        result.update({
+            "engine": getattr(response, "engine", _ENGINE_AGNES),
+            "model": getattr(response, "model", _MODEL_NAME),
+            "latency_seconds": elapsed,
+            "cache_hit": False,
+        })
+        usage = getattr(response, "usage", None)
+        if usage:
+            result["usage"] = _usage_to_dict(usage)
+        if use_cache:
+            _cache_put(cache_key, result)
+        _log_journal({
+            "tool": "jev_review",
+            "point": review["point"],
+            "status": result["status"],
+            "agreement": result.get("agreement"),
+            "confidence": result.get("confidence"),
+            "adoptable": result["adoptable"],
+            "latency_seconds": elapsed,
+            "state_preview": review["question"][:100],
+        })
+        return _dump(result)
+    except Exception as exc:
+        result = json.loads(_failure_json("jev_review", state, exc, timeout))
+        result.update({
+            "status": "unavailable",
+            "point": review["point"],
+            "primaryChoice": review["primaryChoice"],
+            "adoptable": False,
+        })
+        return _dump(result)
 
 

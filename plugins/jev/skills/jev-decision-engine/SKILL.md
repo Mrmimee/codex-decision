@@ -1,17 +1,18 @@
 ---
 name: jev-decision-engine
-description: Use for a genuine routing choice between several plausible tools or execution paths, or when a risky action needs a structured second opinion. Do not use for ordinary conversation, obvious tool choices, or every tool call.
+description: Use for a genuine routing choice between several plausible tools or execution paths, to independently review a preselected choice with explicit evidence, or when a risky action needs a structured second opinion. Do not use for ordinary conversation, obvious tool choices, or every tool call.
 metadata:
   short-description: Structured routing and action-risk checks
 ---
 
 # Jev Decision Engine
 
-Jev is a decision model, not a chat model. It returns structured answers through the `jev` and `jev_guard` MCP tools. Use it selectively.
+Jev is a decision model, not a chat model. It returns structured answers through the `jev`, `jev_review`, and `jev_guard` MCP tools. Use it selectively.
 
 ## When To Call
 
 - Use `jev` with `choice` or `choices` when two or more tools or execution paths are genuinely plausible and the choice affects the result.
+- Use `jev_review` when you already formed a `primaryChoice` but the choice is materially uncertain and evidence or constraints could change it. The reviewer sees the candidates, evidence and constraints, but not your preselection, to reduce anchoring; it returns an advisory recommendation, confidence, and abstain/adoptable state.
 - Use `jev` with `noul`, `nouls`, `score`, or `scores` for a discrete yes/no or rating judgment that is useful before proceeding.
 - Use `jev_guard` when an action has material risk, such as destructive changes, credential access, external transmission, or a hard-to-reverse operation.
 - Do not call Jev for ordinary conversation, obvious tool selection, or before every tool call. Do not call it merely to restate a decision you already know.
@@ -37,6 +38,30 @@ Pass only the context needed for this judgment. Never include credentials or unr
 
 Batch independent questions with `choices`, `nouls`, and `scores` instead of making one call per question.
 
+### Evidence-backed review
+
+Form `primaryChoice` yourself first, then send the bounded candidate set and
+only the evidence needed for this decision. Keep the reviewer advisory.
+
+```json
+{
+  "point": "candidate_selection",
+  "question": "Which metric matches the requested recognition basis?",
+  "primaryChoice": "metric_a",
+  "options": [
+    {"id": "metric_a", "description": "Estimated revenue", "evidenceRefs": ["E1"]},
+    {"id": "metric_b", "description": "Financially recognized revenue", "evidenceRefs": ["E2"]}
+  ],
+  "evidence": [
+    {"id": "E1", "fact": "Includes orders not yet recognized"},
+    {"id": "E2", "fact": "User explicitly asked for financial recognition"}
+  ],
+  "constraints": ["Choose only from the candidate set"],
+  "minConfidence": 0.75,
+  "abstainBelow": 0.5
+}
+```
+
 ```json
 {
   "state": "Delete the generated cache directory",
@@ -47,7 +72,10 @@ Batch independent questions with `choices`, `nouls`, and `scores` instead of mak
 ## Read Results
 
 - `jev` returns `answers` keyed by question name, plus aliases for single questions and `engine`, `model`, `usage`, and `latency_seconds`.
+- `jev_review` returns `status` (`ok`, `not_adoptable`, `abstained`, or `shadow`), `recommendation`, `confidence`, `agreement`, `adoptable`, thresholds, and `engine`/`model`.
 - `jev_guard` returns `verdict` (`allow`, `ask`, or `deny`), `verdict_source`, the six `signals`, and thresholds.
+- In `jev_review`, `adoptable` is only a confidence threshold signal. You remain responsible for the final decision and for any user confirmation.
+- Treat `abstained` and `not_adoptable` as reasons to keep your own choice or ask for more evidence; never turn a reviewer result into permission to bypass a safety rule.
 - Treat `ask` as a reason to pause and ask the user. Treat `deny` as a reason not to perform the action. `allow` is a second opinion, not authorization.
 - When the result has `error`, no verdict was produced. Do not treat an error as `allow`; say that the guard did not run and continue under the user's and system's actual authorization rules.
 

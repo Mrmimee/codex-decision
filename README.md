@@ -1,10 +1,12 @@
 # codex-jev
 
-Jev decision engine as a self-contained **Codex plugin**. It exposes two MCP
+Jev decision engine as a self-contained **Codex plugin**. It exposes three MCP
 tools to Codex through a local stdio server:
 
 - `jev` — structured routing (Choice), yes/no (Noul), and scoring (Score),
   batched in a single round-trip.
+- `jev_review` — evidence-backed independent review of a preselected choice,
+  with confidence bands, abstention, and optional shadow mode.
 - `jev_guard` — a six-signal action gate returning `allow` / `ask` / `deny`.
 
 The engine (`plugins/jev/jev_engine/`) is the tested upstream
@@ -37,10 +39,19 @@ codex plugin marketplace add Mrmimee/codex-jev
 codex plugin add jev@codex-jev
 ```
 
-Restart Codex (or open a new thread) to load `jev` and `jev_guard`.
+Restart Codex (or open a new thread) to load `jev`, `jev_review`, and
+`jev_guard`.
 
 ## Semantics
 
 Jev only returns structured judgments; it never calls other tools or grants
 authorization. On a missing key/engine, timeout, or online failure it returns
 `error` with no verdict — an error is never an `allow`.
+
+`jev_review` deliberately asks the primary model to form `primaryChoice`
+before calling it, but withholds that answer from the reviewer to reduce
+anchoring. The reviewer sees bounded options, evidence, and constraints, and
+returns an advisory recommendation with `confidence`, `agreement`, and
+`adoptable`. A confidence below `abstainBelow` is reported as `abstained`; a
+value below `minConfidence` is `not_adoptable`. Neither state grants permission
+or replaces the primary model's final judgment.

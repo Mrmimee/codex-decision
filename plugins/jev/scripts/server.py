@@ -20,13 +20,14 @@ from typing import Any
 warnings.filterwarnings("ignore", message=r"Pydantic serializer warnings")
 
 SERVER_NAME = "jev"
-SERVER_VERSION = "1.2.0"
+SERVER_VERSION = "1.3.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 # MCP tool name -> (schema attribute, handler attribute) on the engine.
 TOOLS = {
     "jev": ("JEV_SCHEMA", "_handle_jev"),
+    "jev_review": ("JEV_REVIEW_SCHEMA", "_handle_jev_review"),
     "jev_guard": ("JEV_GUARD_SCHEMA", "_handle_jev_guard"),
 }
 
