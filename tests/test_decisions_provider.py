@@ -9,9 +9,9 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "plugins" / "jev"))
+sys.path.insert(0, str(ROOT / "plugins" / "decision"))
 
-from jev_engine.decisions_provider import DecisionsProvider  # noqa: E402
+from decision_engine.decisions_provider import DecisionsProvider  # noqa: E402
 
 
 SCHEMA = {

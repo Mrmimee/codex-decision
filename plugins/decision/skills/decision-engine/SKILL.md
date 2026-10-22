@@ -1,21 +1,21 @@
 ---
-name: jev-decision-engine
+name: decision-engine
 description: Use for a genuine routing choice between several plausible tools or execution paths, to independently review a preselected choice with explicit evidence, or when a risky action needs a structured second opinion. Do not use for ordinary conversation, obvious tool choices, or every tool call.
 metadata:
   short-description: Structured routing and action-risk checks
 ---
 
-# Jev Decision Engine
+# Decision Engine
 
-Jev is a decision model, not a chat model. It returns structured answers through the `jev`, `jev_review`, and `jev_guard` MCP tools. Use it selectively.
+Decision is a calibrated decision engine, not a chat model. It returns structured answers through the `decision`, `decision_review`, and `decision_guard` MCP tools. Use it selectively.
 
 ## When To Call
 
-- Use `jev` with `choice` or `choices` when two or more tools or execution paths are genuinely plausible and the choice affects the result.
-- Use `jev_review` when you already formed a `primaryChoice` but the choice is materially uncertain and evidence or constraints could change it. The reviewer sees the candidates, evidence and constraints, but not your preselection, to reduce anchoring; it returns an advisory recommendation, confidence, and abstain/adoptable state.
-- Use `jev` with `noul`, `nouls`, `score`, or `scores` for a discrete yes/no or rating judgment that is useful before proceeding.
-- Use `jev_guard` when an action has material risk, such as destructive changes, credential access, external transmission, or a hard-to-reverse operation.
-- Do not call Jev for ordinary conversation, obvious tool selection, or before every tool call. Do not call it merely to restate a decision you already know.
+- Use `decision` with `choice` or `choices` when two or more tools or execution paths are genuinely plausible and the choice affects the result.
+- Use `decision_review` when you already formed a `primaryChoice` but the choice is materially uncertain and evidence or constraints could change it. The reviewer sees the candidates, evidence, and constraints, but not your preselection, to reduce anchoring; it returns an advisory recommendation, confidence, and abstain/adoptable state.
+- Use `decision` with `noul`, `nouls`, `score`, or `scores` for a calibrated yes/no probability or rating judgment that is useful before proceeding.
+- Use `decision_guard` when an action has material risk, such as destructive changes, credential access, external transmission, or a hard-to-reverse operation.
+- Do not call Decision for ordinary conversation, obvious tool selection, or before every tool call. Do not call it merely to restate a decision you already know.
 
 ## Call Shape
 
@@ -71,19 +71,19 @@ only the evidence needed for this decision. Keep the reviewer advisory.
 
 ## Read Results
 
-- `jev` returns `answers` keyed by question name, plus aliases for single questions and `engine`, `model`, `usage`, and `latency_seconds`.
-- `jev_review` returns `status` (`ok`, `not_adoptable`, `abstained`, or `shadow`), `recommendation`, `confidence`, `agreement`, `adoptable`, thresholds, and `engine`/`model`.
-- `jev_guard` returns `verdict` (`allow`, `ask`, or `deny`), `verdict_source`, the six `signals`, and thresholds.
-- In `jev_review`, `adoptable` is only a confidence threshold signal. You remain responsible for the final decision and for any user confirmation.
+- `decision` returns `answers` keyed by question name, `details` (including `probabilities` and `confidence`), plus aliases for single questions and `engine`, `model`, `usage`, and `latency_seconds`.
+- `decision_review` returns `status` (`ok`, `not_adoptable`, `abstained`, or `shadow`), `recommendation`, `confidence`, `agreement`, `adoptable`, thresholds, and `engine`/`model`.
+- `decision_guard` returns `verdict` (`allow`, `ask`, or `deny`), `confidence`, `verdict_source`, the six `signals`, and thresholds.
+- In `decision_review`, `adoptable` is only a confidence threshold signal. You remain responsible for the final decision and for any user confirmation.
 - Treat `abstained` and `not_adoptable` as reasons to keep your own choice or ask for more evidence; never turn a reviewer result into permission to bypass a safety rule.
 - Treat `ask` as a reason to pause and ask the user. Treat `deny` as a reason not to perform the action. `allow` is a second opinion, not authorization.
 - When the result has `error`, no verdict was produced. Do not treat an error as `allow`; say that the guard did not run and continue under the user's and system's actual authorization rules.
 
-After using Jev, include one concise visible summary line in the response, for example:
+After using Decision, include one concise visible summary line in the response, for example:
 
 ```text
-Jev: route=browser (0.8s)
-Jev Guard: ask (0.62) (1.1s)
+Decision: route=browser (0.8s)
+Decision Guard: ask (0.62) (1.1s)
 ```
 
 Do not paste raw JSON unless the user asks for it.
@@ -91,12 +91,12 @@ Do not paste raw JSON unless the user asks for it.
 ## Availability
 
 The embedded engine defaults to `baseten/elephant-1:free` through OpenRouter
-and needs `OPENROUTER_API_KEY` (or `JEV_KEY_FILE` pointing at a single-line key
-file) plus an importable `system_one_adapter`. Set `JEV_ENGINE=agnes` and
+and needs `OPENROUTER_API_KEY` (or `DECISION_KEY_FILE` pointing at a single-line key
+file) plus an importable `system_one_adapter`. Set `DECISION_ENGINE=agnes` and
 provide `AGNES_API_KEY` to use the legacy Agnes backend. It never scans your
 Desktop or any other location for secrets. A missing key, missing engine,
 timeout, or failed call returns an explicit `error`, not a fallback verdict.
 
-`jev` and `jev_review` use Elephant by default. `jev_guard` uses Agnes by
-default for conservative risk signals; set `JEV_GUARD_ENGINE=openrouter` to
+`decision` and `decision_review` use Elephant by default. `decision_guard` uses Agnes by
+default for conservative risk signals; set `DECISION_GUARD_ENGINE=openrouter` to
 use Elephant for guard as well.

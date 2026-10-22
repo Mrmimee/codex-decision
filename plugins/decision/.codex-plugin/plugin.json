@@ -1,0 +1,37 @@
+{
+  "name": "decision",
+  "version": "1.0.0",
+  "mcpServers": "./.mcp.json",
+  "description": "Decision engine for Codex: structured routing (Choice), evidence-backed review, risk checks (Noul), scoring, and a six-signal action guard, via a local MCP server.",
+  "author": {
+    "name": "Mrmimee"
+  },
+  "homepage": "https://github.com/Mrmimee/codex-decision",
+  "repository": "https://github.com/Mrmimee/codex-decision",
+  "license": "MIT",
+  "keywords": [
+    "decision",
+    "routing",
+    "guard",
+    "openrouter",
+    "elephant",
+    "agnes"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Decision",
+    "shortDescription": "Structured decisions, reviews, and action-risk checks",
+    "longDescription": "Decision exposes a calibrated decision engine to Codex through a local MCP server. Use it for genuine routing choices, evidence-backed review of a primary model's preselection, or a risky action that needs a structured second opinion.",
+    "developerName": "Mrmimee",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://github.com/Mrmimee/codex-decision",
+    "defaultPrompt": [
+      "Use Decision to compare these execution paths.",
+      "Review my preselected choice with Decision."
+    ],
+    "brandColor": "#0B6E69"
+  }
+}

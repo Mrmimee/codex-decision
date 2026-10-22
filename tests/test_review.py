@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE_PATH = ROOT / "plugins" / "jev" / "jev_engine" / "__init__.py"
-spec = importlib.util.spec_from_file_location("jev_engine_under_test", ENGINE_PATH)
+ENGINE_PATH = ROOT / "plugins" / "decision" / "decision_engine" / "__init__.py"
+spec = importlib.util.spec_from_file_location("decision_engine_under_test", ENGINE_PATH)
 engine = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(engine)

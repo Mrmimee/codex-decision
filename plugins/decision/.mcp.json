@@ -1,12 +1,19 @@
 {
   "mcpServers": {
-    "jev": {
+    "decision": {
       "command": "cmd.exe",
       "args": ["/d", "/c", "scripts\\run.cmd"],
       "cwd": ".",
       "enabled": true,
       "env_vars": [
         "OPENROUTER_API_KEY",
+        "DECISION_ENGINE",
+        "DECISION_GUARD_ENGINE",
+        "DECISION_PYTHON",
+        "DECISION_STATE_DIR",
+        "DECISION_SITE_PACKAGES",
+        "DECISION_VENV",
+        "DECISION_KEY_FILE",
         "JEV_ENGINE",
         "JEV_GUARD_ENGINE",
         "AGNES_API_KEY",

@@ -7,10 +7,9 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugins" / "jev"
+PLUGIN = ROOT / "plugins" / "decision"
 sys.path.insert(0, str(PLUGIN))
-ENGINE_PATH = PLUGIN / "jev_engine" / "__init__.py"
-engine = importlib.import_module("jev_engine")
+engine = importlib.import_module("decision_engine")
 
 
 class BackendSelectionTests(unittest.TestCase):

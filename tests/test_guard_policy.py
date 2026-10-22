@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "plugins" / "jev"))
-engine = importlib.import_module("jev_engine")
+sys.path.insert(0, str(ROOT / "plugins" / "decision"))
+engine = importlib.import_module("decision_engine")
 
 
 class GuardPolicyTests(unittest.TestCase):

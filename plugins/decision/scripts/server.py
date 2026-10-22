@@ -1,44 +1,39 @@
 #!/usr/bin/env python3
-"""Minimal stdio MCP server exposing the embedded Jev decision engine to Codex.
-
-The engine is embedded in ``../jev_engine`` (the upstream decision logic with
-its Hermes registration shim removed), so the plugin depends on no Hermes
-installation. Tool definitions and dispatch share one table, so each tool is
-declared once.
-"""
+"""Minimal stdio MCP server exposing the embedded Decision engine to Codex."""
 from __future__ import annotations
 
 import importlib
 import json
-import warnings
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
-# The adapter SDK emits third-party Pydantic serializer warnings on stderr on
-# every call. They are noise for an MCP server: stdout carries the protocol.
 warnings.filterwarnings("ignore", message=r"Pydantic serializer warnings")
 
-SERVER_NAME = "jev"
-SERVER_VERSION = "1.5.0"
+SERVER_NAME = "decision"
+SERVER_VERSION = "1.0.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-# MCP tool name -> (schema attribute, handler attribute) on the engine.
 TOOLS = {
-    "jev": ("JEV_SCHEMA", "_handle_jev"),
-    "jev_review": ("JEV_REVIEW_SCHEMA", "_handle_jev_review"),
-    "jev_guard": ("JEV_GUARD_SCHEMA", "_handle_jev_guard"),
+    "decision": ("DECISION_SCHEMA", "_handle_decision"),
+    "decision_review": ("DECISION_REVIEW_SCHEMA", "_handle_decision_review"),
+    "decision_guard": ("DECISION_GUARD_SCHEMA", "_handle_decision_guard"),
+}
+LEGACY_TOOL_ALIASES = {
+    "jev": "decision",
+    "jev_review": "decision_review",
+    "jev_guard": "decision_guard",
 }
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_engine() -> Any:
-    """Import the vendored engine package from this plugin's directory."""
     if str(PLUGIN_ROOT) not in sys.path:
         sys.path.insert(0, str(PLUGIN_ROOT))
-    return importlib.import_module("jev_engine")
+    return importlib.import_module("decision_engine")
 
 
 def tool_definitions(engine: Any) -> list[dict[str, Any]]:
@@ -56,8 +51,9 @@ def tool_definitions(engine: Any) -> list[dict[str, Any]]:
 
 
 def call_tool(engine: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    canonical = LEGACY_TOOL_ALIASES.get(name, name)
     try:
-        _, handler_attr = TOOLS[name]
+        _, handler_attr = TOOLS[canonical]
     except KeyError:
         raise KeyError(f"Unknown tool: {name}") from None
     payload = getattr(engine, handler_attr)(arguments)
@@ -98,7 +94,7 @@ def handle(request: dict[str, Any], engine: Any) -> dict[str, Any] | None:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                 "instructions": (
-                    "Call Jev only when several execution paths are genuinely plausible, "
+                    "Call Decision only when several execution paths are genuinely plausible, "
                     "or when a risky action needs a structured second opinion. "
                     "An error is not an allow verdict."
                 ),
@@ -114,7 +110,7 @@ def handle(request: dict[str, Any], engine: Any) -> dict[str, Any] | None:
         try:
             result = call_tool(engine, params.get("name"), params.get("arguments") or {})
         except Exception as exc:
-            result = error_result(f"Jev adapter failed: {type(exc).__name__}: {exc}")
+            result = error_result(f"Decision adapter failed: {type(exc).__name__}: {exc}")
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
     if request_id is None:
         return None

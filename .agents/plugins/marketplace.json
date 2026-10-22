@@ -1,14 +1,14 @@
 {
-  "name": "codex-jev",
+  "name": "codex-decision",
   "interface": {
-    "displayName": "Codex Jev"
+    "displayName": "Codex Decision"
   },
   "plugins": [
     {
-      "name": "jev",
+      "name": "decision",
       "source": {
         "source": "local",
-        "path": "./plugins/jev"
+        "path": "./plugins/decision"
       },
       "policy": {
         "installation": "AVAILABLE",
