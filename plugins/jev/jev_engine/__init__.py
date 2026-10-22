@@ -3,8 +3,10 @@
 供 `scripts/server.py` 通过 MCP 暴露"单选 (Choice)"、"打分 (Score)"、"是非率 (Noul)"决策。
 支持单题/多题并发打满（1 次网络往返裁决多个问题），具备双层持久化磁盘缓存、8 秒硬超时熔断与黑匣子审计日志。
 
-引擎（`system_one_adapter` → Agnes 3.0 Flash，结果里带 `engine` 字段）：
-唯一在线引擎是 Agnes 3.0 Flash（需要 `AGNES_API_KEY`）；官方 TypeSafe 直连按量计费，本插件不接入。
+引擎（`system_one_adapter` → OpenRouter/Elephant 或 Agnes，结果里带 `engine` 字段）：
+默认在线引擎是 OpenRouter 上的 `baseten/elephant-1:free`（需要 `OPENROUTER_API_KEY`）；
+可通过 `JEV_ENGINE=agnes` 显式切回 Agnes 3.0 Flash（需要 `AGNES_API_KEY`）。
+官方 TypeSafe 直连按量计费，本插件不接入。
 
 引擎不可用、超时或报错时**直接返回 error**：不做本地离线兜底判定，不产生任何"看起来正常"的假结论。
 
@@ -61,13 +63,17 @@ except Exception:
 
     OpenAIProvider: Any = _MissingOpenAIProvider
 
-_BASE_URL = "https://apihub.agnes-ai.com/v1"
-_MODEL_NAME = "agnes-3.0-flash"
+_AGNES_BASE_URL = "https://apihub.agnes-ai.com/v1"
+_AGNES_MODEL_NAME = "agnes-3.0-flash"
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api"
+_OPENROUTER_MODEL_NAME = "baseten/elephant-1:free"
+_DEFAULT_ENGINE = "openrouter"
 _DEFAULT_TIMEOUT_SECONDS = 8.0
 _DEFAULT_REVIEW_MIN_CONFIDENCE = 0.75
 _DEFAULT_REVIEW_ABSTAIN_BELOW = 0.5
 
-_ENGINE_AGNES = "agnes"   # 唯一引擎：system_one_adapter → Agnes 3.0 Flash
+_ENGINE_AGNES = "agnes"
+_ENGINE_OPENROUTER = "openrouter"
 _ENGINE_NONE = "none"     # 无可用引擎：直接报错，不做离线兜底
 
 _REVIEW_LIMITS = {
@@ -239,27 +245,92 @@ def _log_journal(entry: dict[str, Any]) -> None:
         pass
 
 
-def _get_agnes_key() -> str:
-    """读取 Agnes 密钥：只接受显式配置，绝不扫描桌面或任意文件。
-
-    顺序：AGNES_API_KEY 环境变量 > JEV_KEY_FILE 指定的单行密钥文件。
-    """
-    key = os.environ.get("AGNES_API_KEY", "").strip()
-    if key:
-        return key
+def _key_from_file() -> str:
     key_file = os.environ.get("JEV_KEY_FILE")
-    if key_file:
-        path = Path(key_file).expanduser()
-        if path.is_file():
-            return path.read_text(encoding="utf-8").strip()
+    if not key_file:
+        return ""
+    path = Path(key_file).expanduser()
+    if path.is_file():
+        return path.read_text(encoding="utf-8").strip()
     return ""
 
 
+def _get_engine_name() -> str:
+    """Select the backend; OpenRouter/Elephant is the default."""
+    requested = os.environ.get("JEV_ENGINE", "").strip().lower()
+    if requested in (_ENGINE_OPENROUTER, _ENGINE_AGNES):
+        return requested
+    return _DEFAULT_ENGINE
+
+
+def _guard_engine_name() -> str:
+    """Use Agnes for guard by default, while allowing an explicit override."""
+    requested = os.environ.get("JEV_GUARD_ENGINE", "").strip().lower()
+    if requested in (_ENGINE_OPENROUTER, _ENGINE_AGNES):
+        return requested
+    return _ENGINE_AGNES
+
+
+def _get_openrouter_key() -> str:
+    """Read the OpenRouter key without scanning arbitrary files."""
+    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if key:
+        return key
+    return _key_from_file()
+
+
+def _get_agnes_key() -> str:
+    """Read the legacy Agnes key without scanning arbitrary files."""
+    key = os.environ.get("AGNES_API_KEY", "").strip()
+    if key:
+        return key
+    return _key_from_file()
+
+
+def _get_engine_key(engine_name: str | None = None) -> str:
+    if (engine_name or _get_engine_name()) == _ENGINE_AGNES:
+        return _get_agnes_key()
+    return _get_openrouter_key()
+
+
 def _active_engine() -> str:
-    """当前实际会使用的引擎标识（agnes:<model> / none），同时用于缓存键隔离"""
-    if _adapter_available and _get_agnes_key():
-        return f"{_ENGINE_AGNES}:{_MODEL_NAME}"
-    return _ENGINE_NONE
+    """Current engine identifier, used for reporting and cache isolation."""
+    if not _adapter_available:
+        return _ENGINE_NONE
+    if _get_engine_name() == _ENGINE_AGNES:
+        return (
+            f"{_ENGINE_AGNES}:{_AGNES_MODEL_NAME}"
+            if _get_agnes_key()
+            else _ENGINE_NONE
+        )
+    return (
+        f"{_ENGINE_OPENROUTER}:{_OPENROUTER_MODEL_NAME}"
+        if _get_openrouter_key()
+        else _ENGINE_NONE
+    )
+
+
+def _active_guard_engine() -> str:
+    """Current guard engine identifier."""
+    if not _adapter_available:
+        return _ENGINE_NONE
+    if _guard_engine_name() == _ENGINE_AGNES:
+        return (
+            f"{_ENGINE_AGNES}:{_AGNES_MODEL_NAME}"
+            if _get_agnes_key()
+            else _ENGINE_NONE
+        )
+    return (
+        f"{_ENGINE_OPENROUTER}:{_OPENROUTER_MODEL_NAME}"
+        if _get_openrouter_key()
+        else _ENGINE_NONE
+    )
+
+
+def _default_model_name(engine_name: str | None = None) -> str:
+    if (engine_name or _get_engine_name()) == _ENGINE_AGNES:
+        return _AGNES_MODEL_NAME
+    return _OPENROUTER_MODEL_NAME
 
 
 # 发送给第三方裁决前先脱敏（凭据绝不进网络请求，也不进审计日志预览）
@@ -347,8 +418,13 @@ def _guard_verdict_from_signals(signals: dict[str, Any], threshold: float) -> tu
 
 
 def _jev_tool_available() -> bool:
-    """判断 Jev 小脑是否可用：adapter 已装 + Agnes key 可获取"""
-    return bool(_adapter_available and _get_agnes_key())
+    """判断 Jev 小脑是否可用：adapter 已装 + 当前引擎 key 可获取"""
+    return bool(_adapter_available and _get_engine_key())
+
+
+def _guard_tool_available() -> bool:
+    """The guard has its own backend preference."""
+    return bool(_adapter_available and _get_engine_key(_guard_engine_name()))
 
 
 # 2. 工具定义 Schema
@@ -365,7 +441,7 @@ _NO_CACHE_PARAM = {
 JEV_SCHEMA = {
     "name": "jev",
     "description": (
-        "Jev 决策小脑（system_one_adapter → Agnes 3.0 Flash 结构化裁决）："
+        "Jev 决策小脑（system_one_adapter → OpenRouter/Elephant 结构化裁决）："
         "用于在多个可用工具/执行路径之间确有选择不确定性时，先把候选项及其用途传入 Choice 进行按需路由；"
         "主 Agent 再负责调用所选工具并处理结果。"
         "普通对话、工具选择显而易见时不要调用 Jev；不要每轮调用，也不要对每次工具调用重复裁决。"
@@ -576,14 +652,22 @@ JEV_REVIEW_SCHEMA = {
 }
 
 
-def _build_provider() -> Any:
-    """快速构建指向 Agnes 云端的 Provider"""
-    key = _get_agnes_key()
-    return OpenAIProvider(
-        _MODEL_NAME,
-        base_url=_BASE_URL,
-        api_key=key,
-        api="chat_completions",
+def _build_provider(engine_name: str | None = None) -> Any:
+    """Build the provider for the selected backend."""
+    selected = engine_name or _get_engine_name()
+    if selected == _ENGINE_AGNES:
+        return OpenAIProvider(
+            _AGNES_MODEL_NAME,
+            base_url=_AGNES_BASE_URL,
+            api_key=_get_agnes_key(),
+            api="chat_completions",
+        )
+    from .decisions_provider import DecisionsProvider
+
+    return DecisionsProvider(
+        _OPENROUTER_MODEL_NAME,
+        base_url=_OPENROUTER_BASE_URL,
+        api_key=_get_openrouter_key(),
     )
 
 
@@ -594,7 +678,7 @@ def _execute_system_one_with_timeout(
     provider: Any,
     timeout: float,
 ) -> Any:
-    """带硬超时保护的 System One 执行包装器（system_one_adapter → Agnes 3.0 Flash）。
+    """带硬超时保护的 System One 执行包装器（system_one_adapter → 当前引擎）。
 
     使用模块级单例线程池：超时时 fut.result(timeout) 抛出 TimeoutError，
     主调用方立即返回（真硬超时），后台 worker 继续执行至自然结束，
@@ -883,7 +967,7 @@ def _no_engine_json(tool: str, state: Any) -> str:
     return _dump({
         "error": message,
         "engine": _ENGINE_NONE,
-        "hint": "需要 AGNES_API_KEY + 可导入的 system_one_adapter；拿不到 verdict 就不要当成 allow。",
+        "hint": "需要当前引擎的 API key（OpenRouter/Elephant 默认）和可导入的 system_one_adapter；拿不到 verdict 就不要当成 allow。",
     })
 
 
@@ -1008,8 +1092,8 @@ def _handle_jev(args: dict[str, Any], **kwargs) -> str:
         result = {
             "latency_seconds": elapsed,
             "cache_hit": False,
-            "engine": getattr(response, "engine", _ENGINE_AGNES),
-            "model": getattr(response, "model", _MODEL_NAME),
+            "engine": getattr(response, "engine", _active_engine().split(":", 1)[0]),
+            "model": getattr(response, "model", _default_model_name()),
             "answers": answers,
         }
         usage = getattr(response, "usage", None)
@@ -1039,7 +1123,7 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
     cached, cache_key = _cache_hit_json("jev_guard", args, state, use_cache)
     if cached is not None:
         return cached
-    if not _jev_tool_available():
+    if not _guard_tool_available():
         return _no_engine_json("jev_guard", state)
 
     guard_cfg = args.get("guard") or {}
@@ -1056,7 +1140,7 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
             client=SystemOneAdapterClient(structured_outputs=False, llm_answer_mode="discrete"),
             state=state,
             questions=questions,
-            provider=_build_provider(),
+            provider=_build_provider(_guard_engine_name()),
             timeout=timeout,
         )
         elapsed = round(time.time() - started, 2)
@@ -1079,8 +1163,8 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
             "signals": signals,
             "verdict_source": verdict_source,
             "reason": reason,
-            "engine": getattr(response, "engine", _ENGINE_AGNES),
-            "model": getattr(response, "model", _MODEL_NAME),
+            "engine": getattr(response, "engine", _active_guard_engine().split(":", 1)[0]),
+            "model": getattr(response, "model", _default_model_name(_guard_engine_name())),
             "latency_seconds": elapsed,
             "cache_hit": False,
         }
@@ -1130,7 +1214,7 @@ def _handle_jev_review(args: dict[str, Any], **kwargs) -> str:
             "primaryChoice": review["primaryChoice"],
             "adoptable": False,
             "engine": _ENGINE_NONE,
-            "hint": "需要 AGNES_API_KEY + 可导入的 system_one_adapter；错误不是放行。",
+            "hint": "需要当前引擎的 API key（OpenRouter/Elephant 默认）和可导入的 system_one_adapter；错误不是放行。",
         })
 
     try:
@@ -1157,8 +1241,8 @@ def _handle_jev_review(args: dict[str, Any], **kwargs) -> str:
                 and not isinstance(value, bool)
             }
         result.update({
-            "engine": getattr(response, "engine", _ENGINE_AGNES),
-            "model": getattr(response, "model", _MODEL_NAME),
+            "engine": getattr(response, "engine", _active_engine().split(":", 1)[0]),
+            "model": getattr(response, "model", _default_model_name()),
             "latency_seconds": elapsed,
             "cache_hit": False,
         })

@@ -9,6 +9,12 @@ tools to Codex through a local stdio server:
   with confidence bands, abstention, and optional shadow mode.
 - `jev_guard` — a six-signal action gate returning `allow` / `ask` / `deny`.
 
+The default decision backend is `baseten/elephant-1:free` through OpenRouter.
+The guard keeps Agnes as its default safety backend because it produced more
+conservative risk signals in testing. Set `JEV_ENGINE=agnes` to move ordinary
+decisions back to Agnes, or `JEV_GUARD_ENGINE=openrouter` to move the guard to
+Elephant.
+
 The engine (`plugins/jev/jev_engine/`) is the tested upstream
 [Hermes `jev` plugin](https://github.com/Mrmimee/hermes-plugin-jev) logic with
 its Hermes registration shim removed. Only the transport layer (the MCP server
@@ -28,9 +34,11 @@ anything from Hermes:
 
 - Python with `system-one-adapter[openai]` installed. The launcher picks, in
   order: `JEV_PYTHON`, `%USERPROFILE%\jev-starter\.venv`, `py -3`, `python`.
-- `AGNES_API_KEY` in the environment. For headless setups that cannot export
-  it, point `JEV_KEY_FILE` at a single-line key file. The engine never scans
-  your Desktop or any other location for secrets.
+- `OPENROUTER_API_KEY` in the environment for the default
+  `baseten/elephant-1:free` backend. For headless setups that cannot export it,
+  point `JEV_KEY_FILE` at a single-line key file. Set `JEV_ENGINE=agnes` and
+  provide `AGNES_API_KEY` to use the legacy Agnes backend instead. The engine
+  never scans your Desktop or any other location for secrets.
 
 ## Install into Codex
 

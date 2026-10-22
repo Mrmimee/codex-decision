@@ -90,7 +90,13 @@ Do not paste raw JSON unless the user asks for it.
 
 ## Availability
 
-The embedded engine needs `AGNES_API_KEY` (or `JEV_KEY_FILE` pointing at a
-single-line key file) and an importable `system_one_adapter`. It never scans
-your Desktop or any other location for secrets. A missing key, missing engine,
+The embedded engine defaults to `baseten/elephant-1:free` through OpenRouter
+and needs `OPENROUTER_API_KEY` (or `JEV_KEY_FILE` pointing at a single-line key
+file) plus an importable `system_one_adapter`. Set `JEV_ENGINE=agnes` and
+provide `AGNES_API_KEY` to use the legacy Agnes backend. It never scans your
+Desktop or any other location for secrets. A missing key, missing engine,
 timeout, or failed call returns an explicit `error`, not a fallback verdict.
+
+`jev` and `jev_review` use Elephant by default. `jev_guard` uses Agnes by
+default for conservative risk signals; set `JEV_GUARD_ENGINE=openrouter` to
+use Elephant for guard as well.

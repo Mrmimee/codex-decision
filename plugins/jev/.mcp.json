@@ -6,6 +6,8 @@
       "cwd": ".",
       "enabled": true,
       "env_vars": [
+        "OPENROUTER_API_KEY",
+        "JEV_ENGINE",
         "AGNES_API_KEY",
         "LOCALAPPDATA",
         "USERPROFILE",
