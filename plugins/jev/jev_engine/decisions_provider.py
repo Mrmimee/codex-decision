@@ -105,9 +105,20 @@ class DecisionsProvider:
         if not questions:
             raise TypeSafeError("The generated schema contained no questions.")
 
+        document = next(
+            (
+                message.content
+                for message in messages
+                if message.role == "user"
+                and message.content.lstrip().startswith("<document>")
+            ),
+            None,
+        )
+        if document is None:
+            raise TypeSafeError("No <document> message was supplied to DecisionsProvider.")
         body = {
             "model": self.model_name,
-            "state": messages[-1].content,
+            "state": document,
             "questions": questions,
         }
         request = urllib.request.Request(

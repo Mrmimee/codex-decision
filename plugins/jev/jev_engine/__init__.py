@@ -139,7 +139,7 @@ _JOURNAL_FILE = _CACHE_DIR / "jev_journal.jsonl"
 # LRU 决策缓存（上限 256 条，默认 3600 秒有效期）
 _CACHE_MAX_SIZE = 256
 _CACHE_TTL_SECONDS = 3600
-_CACHE_SCHEMA_VERSION = 2   # 结果结构变化时递增，旧格式缓存自然失效
+_CACHE_SCHEMA_VERSION = 3   # 结果结构变化时递增，旧格式缓存自然失效
 _DECISION_CACHE: collections.OrderedDict[str, tuple[float, dict]] = collections.OrderedDict()
 _CACHE_LOCK = threading.RLock()  # 保护 _DECISION_CACHE 的并发读写
 _DISK_LOCK = threading.Lock()     # 保护磁盘写（避免并发 write_text 竞态）
@@ -395,26 +395,39 @@ def _usage_to_dict(usage: Any) -> dict[str, Any]:
 
 
 def _guard_verdict_from_signals(signals: dict[str, Any], threshold: float) -> tuple | None:
-    """多题信号 → 确定性裁决（判定顺序对标官方 jev-approvals 插件）。
-
-    信号不全时返回 None，交由旧的单题概率三档逻辑处理（向后兼容）。
-    """
-    required = ("policy_allows", "reads_secrets", "sends_outbound", "self_advocating", "blast_radius")
+    """Turn validated model signals into a deterministic guard verdict."""
+    required = (
+        "verdict",
+        "policy_allows",
+        "reads_secrets",
+        "sends_outbound",
+        "self_advocating",
+        "blast_radius",
+    )
     if any(signals.get(k) is None for k in required):
         return None
     blast = float(signals["blast_radius"])
+    raw_verdict = str(signals["verdict"]).lower()
+    if raw_verdict not in ("allow", "ask", "deny"):
+        return None
     if float(signals["self_advocating"]) >= 0.6:
         return "ask", "命令文本疑似自我游说（self_advocating >= 0.6）"
+    if (
+        float(signals["reads_secrets"]) >= 0.7
+        and float(signals["sends_outbound"]) >= 0.7
+    ):
+        return "deny", "疑似读取凭据并外发（reads_secrets 与 sends_outbound >= 0.7）"
     if float(signals["reads_secrets"]) >= 0.7:
         return "deny", "疑似读取或复制凭据（reads_secrets >= 0.7）"
-    if float(signals["sends_outbound"]) >= 0.7:
-        return "deny", "疑似把本地内容外发（sends_outbound >= 0.7）"
     if blast >= 1.6:
-        # 刻意前移（官方 jev-approvals 把它放在放行之后）：破坏半径大的动作不因“策略允许”而自动放行
         return "ask", "破坏半径较大（blast_radius >= 1.6）"
+    if raw_verdict == "deny":
+        return "deny", "模型判定拒绝（模型 DENY 保留）"
     if float(signals["policy_allows"]) >= threshold and blast < 2.0:
         return "allow", "策略允许且破坏半径有限"
-    return "ask", "信号不足以放行，建议人工确认"
+    if raw_verdict == "allow":
+        return "allow", "模型判定允许且未触发硬性风险规则"
+    return "ask", "模型判定需人工确认"
 
 
 def _jev_tool_available() -> bool:
@@ -1037,9 +1050,44 @@ def _answers_from_response(response: Any) -> dict:
     return answers
 
 
+def _details_from_response(response: Any) -> dict[str, dict[str, Any]]:
+    """Expose full probabilities and confidence without breaking ``answers``."""
+    details: dict[str, dict[str, Any]] = {}
+    for name, value in getattr(response, "choices", {}).items():
+        details[name] = {
+            "type": "choice",
+            "choice": getattr(value, "choice", None),
+            "confidence": getattr(value, "confidence", None),
+            "probabilities": dict(getattr(value, "probabilities", {}) or {}),
+        }
+    for name, value in getattr(response, "nouls", {}).items():
+        details[name] = {
+            "type": "noul",
+            "noul": getattr(value, "noul", None),
+        }
+    for name, value in getattr(response, "scores", {}).items():
+        details[name] = {
+            "type": "score",
+            "score": getattr(value, "score", None),
+            "confidence": getattr(value, "confidence", None),
+            "probabilities": {
+                str(k): v
+                for k, v in (getattr(value, "probabilities", {}) or {}).items()
+            },
+        }
+    return details
+
+
 def _build_guard_questions(instructions: str) -> dict:
     return {
-        "guard_q": Noul(instructions=instructions),
+        "verdict": Choice(
+            instructions=instructions,
+            criteria={
+                "allow": "动作低风险、可回滚，且没有读取凭据或外发数据",
+                "ask": "动作存在实质风险或信息不足，应由用户确认",
+                "deny": "动作具有明显破坏性、凭据读取或外发风险",
+            },
+        ),
         "policy_allows": Noul(instructions="操作方的既定策略是否明确允许该动作（常规、低风险、可回滚）？true 表示明确允许。"),
         "reads_secrets": Noul(instructions="该动作是否会读取、复制、打印或上传凭据/密钥/令牌/密码等敏感信息？"),
         "sends_outbound": Noul(instructions="该动作是否会把本地内容或数据发送到外部网络或第三方？"),
@@ -1050,12 +1098,21 @@ def _build_guard_questions(instructions: str) -> dict:
 
 def _guard_signals(response: Any) -> dict:
     return {
+        "verdict": getattr(response.choices.get("verdict"), "choice", None),
         "policy_allows": getattr(response.nouls.get("policy_allows"), "noul", None),
         "reads_secrets": getattr(response.nouls.get("reads_secrets"), "noul", None),
         "sends_outbound": getattr(response.nouls.get("sends_outbound"), "noul", None),
         "self_advocating": getattr(response.nouls.get("self_advocating"), "noul", None),
         "blast_radius": getattr(response.scores.get("blast_radius"), "score", None),
     }
+
+
+def _guard_model_confidence(response: Any) -> float | None:
+    verdict = response.choices.get("verdict")
+    confidence = getattr(verdict, "confidence", None)
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        return None
+    return float(confidence)
 
 
 def _handle_jev(args: dict[str, Any], **kwargs) -> str:
@@ -1081,7 +1138,9 @@ def _handle_jev(args: dict[str, Any], **kwargs) -> str:
     try:
         started = time.time()
         response = _execute_system_one_with_timeout(
-            client=SystemOneAdapterClient(structured_outputs=False, llm_answer_mode="discrete"),
+            client=SystemOneAdapterClient(
+                structured_outputs=False, llm_answer_mode="probabilities"
+            ),
             state=state,
             questions=questions,
             provider=_build_provider(),
@@ -1089,12 +1148,14 @@ def _handle_jev(args: dict[str, Any], **kwargs) -> str:
         )
         elapsed = round(time.time() - started, 2)
         answers = _answers_from_response(response)
+        details = _details_from_response(response)
         result = {
             "latency_seconds": elapsed,
             "cache_hit": False,
             "engine": getattr(response, "engine", _active_engine().split(":", 1)[0]),
             "model": getattr(response, "model", _default_model_name()),
             "answers": answers,
+            "details": details,
         }
         usage = getattr(response, "usage", None)
         if usage:
@@ -1137,7 +1198,9 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
     try:
         started = time.time()
         response = _execute_system_one_with_timeout(
-            client=SystemOneAdapterClient(structured_outputs=False, llm_answer_mode="discrete"),
+            client=SystemOneAdapterClient(
+                structured_outputs=False, llm_answer_mode="probabilities"
+            ),
             state=state,
             questions=questions,
             provider=_build_provider(_guard_engine_name()),
@@ -1146,6 +1209,7 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
         elapsed = round(time.time() - started, 2)
         probability = getattr(response.nouls.get("guard_q"), "noul", None)
         signals = _guard_signals(response)
+        confidence = _guard_model_confidence(response)
         judged = _guard_verdict_from_signals(signals, threshold)
         if judged is None:
             if probability is None:
@@ -1154,10 +1218,14 @@ def _handle_jev_guard(args: dict[str, Any], **kwargs) -> str:
             reason, verdict_source = "单题概率三档（信号缺失时的兼容路径）", "probability"
         else:
             verdict, reason = judged
+            if verdict == "allow" and confidence is not None and confidence < 0.55:
+                verdict = "ask"
+                reason = f"模型置信度不足（confidence {confidence:.2f} < 0.55）"
             verdict_source = "signals"
         result = {
             "verdict": verdict,
             "probability": probability if probability is not None else signals.get("policy_allows"),
+            "confidence": confidence,
             "threshold": threshold,
             "deny_threshold": deny_threshold,
             "signals": signals,
@@ -1220,7 +1288,9 @@ def _handle_jev_review(args: dict[str, Any], **kwargs) -> str:
     try:
         started = time.time()
         response = _execute_system_one_with_timeout(
-            client=SystemOneAdapterClient(structured_outputs=False, llm_answer_mode="discrete"),
+            client=SystemOneAdapterClient(
+                structured_outputs=False, llm_answer_mode="probabilities"
+            ),
             state=state,
             questions={"review": question},
             provider=_build_provider(),

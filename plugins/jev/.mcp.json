@@ -8,6 +8,7 @@
       "env_vars": [
         "OPENROUTER_API_KEY",
         "JEV_ENGINE",
+        "JEV_GUARD_ENGINE",
         "AGNES_API_KEY",
         "LOCALAPPDATA",
         "USERPROFILE",
