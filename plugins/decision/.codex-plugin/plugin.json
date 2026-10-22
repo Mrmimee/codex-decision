@@ -1,6 +1,6 @@
 {
   "name": "decision",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "mcpServers": "./.mcp.json",
   "description": "Decision engine for Codex: structured routing (Choice), evidence-backed review, risk checks (Noul), scoring, and a six-signal action guard, via a local MCP server.",
   "author": {

@@ -52,3 +52,19 @@ returns an advisory recommendation with `confidence`, `agreement`, and
 `adoptable`. A confidence below `abstainBelow` is reported as `abstained`; a
 value below `minConfidence` is `not_adoptable`. Neither state grants permission
 or replaces the primary model's final judgment.
+
+## Guard policy
+
+`decision_guard` runs six questions in one request and applies deterministic
+rules in code. Missing or malformed signals are treated as a failure, not as a
+zero, so an incomplete answer can never become an `allow`.
+
+`allow` requires an operator policy that covers the action. Provide one with:
+
+```bash
+setx DECISION_OPERATOR_POLICY "Deleting cache and temp directories is routine. Git status and diff are routine."
+```
+
+or point `DECISION_POLICY_FILE` at a UTF-8 text file. The policy only relaxes
+the final allow step; it can never bypass the credential, exfiltration, or
+self-advocacy deny rules.

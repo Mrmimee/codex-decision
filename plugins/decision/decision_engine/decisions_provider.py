@@ -20,9 +20,23 @@ def _resolve_ref(schema: dict[str, Any], node: Any) -> Any:
     return node
 
 
+def _question_text(name: str, node: dict[str, Any]) -> str:
+    """Recover the original question text from the generated answer schema.
+
+    In probability mode the description starts with a generic preamble and
+    carries the real question on a ``Question:`` line, so the first line must
+    not be used: that would send the same instruction for every question.
+    """
+    lines = node.get("description", "").splitlines()
+    for line in lines:
+        if line.startswith("Question:"):
+            return line[len("Question:"):].strip()
+    return lines[0] if lines else name
+
+
 def _question_from_schema(name: str, node: dict[str, Any]) -> dict[str, Any]:
     lines = node.get("description", "").splitlines()
-    instructions = lines[0] if lines else name
+    instructions = _question_text(name, node)
     kind = node.get("type")
 
     if kind in ("number", "boolean"):

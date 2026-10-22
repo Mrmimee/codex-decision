@@ -12,6 +12,8 @@
         "DECISION_SITE_PACKAGES",
         "DECISION_VENV",
         "DECISION_KEY_FILE",
+        "DECISION_OPERATOR_POLICY",
+        "DECISION_POLICY_FILE",
         "LOCALAPPDATA",
         "USERPROFILE",
         "HOME",

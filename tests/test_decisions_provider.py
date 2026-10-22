@@ -11,7 +11,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugins" / "decision"))
 
-from decision_engine.decisions_provider import DecisionsProvider  # noqa: E402
+from decision_engine.decisions_provider import (  # noqa: E402
+    DecisionsProvider,
+    _question_from_schema,
+)
 
 
 SCHEMA = {
@@ -54,6 +57,37 @@ class Response:
 
 
 class DecisionsProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.provider = DecisionsProvider(
+            "baseten/elephant-1:free",
+            base_url="https://openrouter.ai/api",
+            api_key="test",
+        )
+
+    def test_recovers_question_text_from_probability_schema(self):
+        node = {
+            "type": "number",
+            "description": (
+                "Probability that the answer is yes or the assertion is true. "
+                "0 means no or false, 0.5 means uncertain, and 1 means yes or true.\n"
+                "Question: 该动作是否会读取凭据？"
+            ),
+        }
+        question = _question_from_schema("reads_secrets", node)
+        self.assertEqual(question["type"], "noul")
+        self.assertEqual(question["instructions"], "该动作是否会读取凭据？")
+
+    def test_distinct_questions_do_not_collapse(self):
+        first = _question_from_schema("a", {
+            "type": "number",
+            "description": "Probability ...\nQuestion: 问题甲",
+        })
+        second = _question_from_schema("b", {
+            "type": "number",
+            "description": "Probability ...\nQuestion: 问题乙",
+        })
+        self.assertNotEqual(first["instructions"], second["instructions"])
+
     def test_uses_last_user_message_as_state(self):
         provider = DecisionsProvider(
             "baseten/elephant-1:free",

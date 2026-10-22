@@ -95,3 +95,20 @@ and needs `OPENROUTER_API_KEY` (or `DECISION_KEY_FILE` pointing at a single-line
 file) plus an importable `system_one_adapter`. It never scans your
 Desktop or any other location for secrets. A missing key, missing engine,
 timeout, or failed call returns an explicit `error`, not a fallback verdict.
+
+## Guard rules
+
+`decision_guard` asks six questions in one request and then applies deterministic
+rules in code. A missing or invalid signal is a failure, never a "no hazard".
+
+1. `self_advocating >= 0.6` → `ask`
+2. `reads_secrets >= 0.7` and `sends_outbound >= 0.7` → `deny`
+3. `reads_secrets >= 0.7` → `deny`
+4. `blast_radius >= 1.0` → `ask`
+5. model `deny` → `deny` (never overridden)
+6. operator policy allows and `blast_radius < 1.0` → `allow`
+7. otherwise → `ask`
+
+`allow` requires an operator policy that covers the action. Set one with
+`DECISION_OPERATOR_POLICY` (inline text) or `DECISION_POLICY_FILE` (a file path).
+The policy only relaxes step 6; it can never bypass the deny rules above.

@@ -12,7 +12,7 @@ from typing import Any
 warnings.filterwarnings("ignore", message=r"Pydantic serializer warnings")
 
 SERVER_NAME = "decision"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.0.1"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
