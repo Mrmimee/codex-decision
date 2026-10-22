@@ -24,12 +24,12 @@ def _env(*names: str) -> str:
 
 def _extra_site_packages() -> list[str]:
     home = Path.home()
-    venv = _env("DECISION_VENV", "JEV_VENV")
+    venv = _env("DECISION_VENV")
     candidates = [
-        _env("DECISION_SITE_PACKAGES", "JEV_SITE_PACKAGES"),
+        _env("DECISION_SITE_PACKAGES"),
         str(Path(venv) / "Lib" / "site-packages") if venv else None,
         home / "jev-starter" / ".venv" / "Lib" / "site-packages",
-        home / ".jev" / "venv" / "Lib" / "site-packages",
+        home / ".codex-decision" / "venv" / "Lib" / "site-packages",
     ]
     return [
         str(Path(p).expanduser())
@@ -45,32 +45,18 @@ for _path in _extra_site_packages():
 _adapter_available = True
 try:
     from system_one_adapter import Choice, Noul, Score, SystemOneAdapterClient
-    from system_one_adapter.providers.openai import OpenAIProvider
 except Exception:
     _adapter_available = False
 
-    class _MissingOpenAIProvider:
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise RuntimeError("system_one_adapter 未安装：请 pip install 'system-one-adapter[openai]'")
-
-    OpenAIProvider: Any = _MissingOpenAIProvider
-
-_AGNES_BASE_URL = "https://apihub.agnes-ai.com/v1"
-_AGNES_MODEL_NAME = "agnes-3.0-flash"
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api"
 _OPENROUTER_MODEL_NAME = "baseten/elephant-1:free"
-_DEFAULT_ENGINE = "openrouter"
-_DEFAULT_TIMEOUT_SECONDS = 8.0
+_DEFAULT_TIMEOUT_SECONDS = 20.0
 _DEFAULT_REVIEW_MIN_CONFIDENCE = 0.75
 _DEFAULT_REVIEW_ABSTAIN_BELOW = 0.5
 
-_ENGINE_AGNES = "agnes"
 _ENGINE_OPENROUTER = "openrouter"
 _ENGINE_NONE = "none"
-_ENGINES = {
-    _ENGINE_OPENROUTER: (_OPENROUTER_BASE_URL, _OPENROUTER_MODEL_NAME, "OPENROUTER_API_KEY"),
-    _ENGINE_AGNES: (_AGNES_BASE_URL, _AGNES_MODEL_NAME, "AGNES_API_KEY"),
-}
+_ENGINE_SPEC = (_OPENROUTER_BASE_URL, _OPENROUTER_MODEL_NAME, "OPENROUTER_API_KEY")
 
 _REVIEW_LIMITS = {
     "point": 64, "question": 500, "option_id": 64, "option_description": 500,
@@ -97,7 +83,7 @@ _SENSITIVE_KEYS = re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|cre
 def _get_cache_dir() -> Path:
     local_app_data = os.environ.get("LOCALAPPDATA")
     candidates = [
-        _env("DECISION_STATE_DIR", "JEV_STATE_DIR"),
+        _env("DECISION_STATE_DIR"),
         Path(local_app_data) / "codex-decision" / "decision" if local_app_data else None,
         Path.home() / ".codex-decision" / "cache",
     ]
@@ -156,45 +142,24 @@ def _save_disk_cache() -> None:
 _load_disk_cache()
 
 
-def _get_engine_name() -> str:
-    req = _env("DECISION_ENGINE", "JEV_ENGINE").lower()
-    return req if req in _ENGINES else _DEFAULT_ENGINE
-
-
-def _guard_engine_name() -> str:
-    req = _env("DECISION_GUARD_ENGINE", "JEV_GUARD_ENGINE").lower()
-    return req if req in _ENGINES else _ENGINE_AGNES
-
-
-def _engine_spec(engine_name: str | None = None) -> tuple[str, str, str, str]:
-    name = engine_name or _get_engine_name()
-    base_url, model, key_env = _ENGINES[name]
+def _engine_spec() -> tuple[str, str, str]:
+    """Return (base_url, model, key) for the single supported backend."""
+    base_url, model, key_env = _ENGINE_SPEC
     key = _env(key_env)
     if not key:
-        kf = _env("DECISION_KEY_FILE", "JEV_KEY_FILE")
+        kf = _env("DECISION_KEY_FILE")
         path = Path(kf).expanduser() if kf else None
         key = path.read_text(encoding="utf-8").strip() if path and path.is_file() else ""
-    return name, base_url, model, key
+    return base_url, model, key
 
 
-def _active_engine(engine_name: str | None = None) -> str:
-    name, _, model, key = _engine_spec(engine_name)
-    return f"{name}:{model}" if (_adapter_available and key) else _ENGINE_NONE
+def _active_engine() -> str:
+    _, model, key = _engine_spec()
+    return f"{_ENGINE_OPENROUTER}:{model}" if (_adapter_available and key) else _ENGINE_NONE
 
 
-def _active_guard_engine() -> str:
-    return _active_engine(_guard_engine_name())
-
-
-def _jev_tool_available() -> bool:
+def _decision_tool_available() -> bool:
     return _active_engine() != _ENGINE_NONE
-
-
-_decision_tool_available = _jev_tool_available
-
-
-def _guard_tool_available() -> bool:
-    return _active_guard_engine() != _ENGINE_NONE
 
 
 def _get_cache_key(args: dict[str, Any], engine_id: str | None = None) -> str:
@@ -310,7 +275,7 @@ def _guard_verdict_from_signals(signals: dict[str, Any], threshold: float) -> tu
     return "ask", "模型判定需人工确认"
 
 
-_TIMEOUT_PARAM = {"type": "number", "description": "网络裁决超时熔断阈值（秒，默认 8.0 秒）。超时直接返回 error，不做本地兜底。"}
+_TIMEOUT_PARAM = {"type": "number", "description": "网络裁决超时熔断阈值（秒，默认 20.0 秒）。超时直接返回 error，不做本地兜底。"}
 _NO_CACHE_PARAM = {"type": "boolean", "description": "是否跳过本地缓存强制实时推理（默认 false）。"}
 _CHOICE_CRITERIA = {"type": "object", "description": "选项及其含义，格式为 {'选项key': '该选项的描述'}"}
 _SCORE_CRITERIA = {"type": "array", "items": {"type": "string"}, "description": "评分梯度数组，如 ['低', '中', '高']"}
@@ -336,9 +301,9 @@ def _item_schema(
 DECISION_SCHEMA = {
     "name": "decision",
     "description": (
-        "Decision 结构化决策引擎（默认 OpenRouter/Elephant，支持切换 Agnes）："
+        "Decision 结构化决策引擎（OpenRouter/Elephant 后端）："
         "用于在多个可用工具/执行路径之间确有选择不确定性时进行 Choice 路由、Noul 是非概率或 Score 打分；"
-        "支持多题并发（choices/nouls/scores），带概率分布、置信度、缓存、8秒超时熔断和脱敏审计。"
+        "支持多题并发（choices/nouls/scores），带概率分布、置信度、缓存、超时熔断和脱敏审计。"
     ),
     "parameters": {
         "type": "object",
@@ -436,15 +401,8 @@ DECISION_REVIEW_SCHEMA = {
     },
 }
 
-JEV_SCHEMA = DECISION_SCHEMA
-JEV_GUARD_SCHEMA = DECISION_GUARD_SCHEMA
-JEV_REVIEW_SCHEMA = DECISION_REVIEW_SCHEMA
-
-
-def _build_provider(engine_name: str | None = None) -> Any:
-    name, base_url, model, key = _engine_spec(engine_name)
-    if name == _ENGINE_AGNES:
-        return OpenAIProvider(model, base_url=base_url, api_key=key, api="chat_completions")
+def _build_provider() -> Any:
+    base_url, model, key = _engine_spec()
     from .decisions_provider import DecisionsProvider
 
     return DecisionsProvider(model, base_url=base_url, api_key=key)
@@ -682,7 +640,7 @@ def _failure_json(tool: str, state: Any, error: Exception, timeout: float, engin
     return _dump({"error": message, "engine": engine_id or _active_engine(), "latency_seconds": latency})
 
 
-def _build_jev_questions(args: dict) -> tuple[dict, dict]:
+def _build_decision_questions(args: dict) -> tuple[dict, dict]:
     questions: dict[str, Any] = {}
     configs = {kind: args.get(kind) for kind in ("choice", "noul", "score")}
     specs = (
@@ -804,10 +762,10 @@ def _handle_decision(args: dict[str, Any], **kwargs) -> str:
     cached, cache_key = _cache_hit_json("decision", args, state, use_cache)
     if cached is not None:
         return cached
-    if not _jev_tool_available():
+    if not _decision_tool_available():
         return _no_engine_json("decision", state)
 
-    questions, configs = _build_jev_questions(args)
+    questions, configs = _build_decision_questions(args)
     if not questions:
         return _dump({
             "error": "没有提供任何判定题目，请提供 choice/choices、noul/nouls 或 score/scores 之一。",
@@ -815,7 +773,7 @@ def _handle_decision(args: dict[str, Any], **kwargs) -> str:
         })
 
     try:
-        _, _, model_name, _ = _engine_spec()
+        _, model_name, _ = _engine_spec()
         response, elapsed = _run_online(state, questions, timeout, _build_provider())
         answers = _answers_from_response(response)
         result: dict[str, Any] = {"answers": answers, "details": _details_from_response(response)}
@@ -845,11 +803,11 @@ def _handle_decision_guard(args: dict[str, Any], **kwargs) -> str:
     state = _redact(args["state"])
     timeout = _timeout_from_args(args)
     use_cache = not args.get("no_cache", False)
-    guard_engine_id = _active_guard_engine()
+    guard_engine_id = _active_engine()
     cached, cache_key = _cache_hit_json("decision_guard", args, state, use_cache, guard_engine_id)
     if cached is not None:
         return cached
-    if not _guard_tool_available():
+    if not _decision_tool_available():
         return _no_engine_json("decision_guard", state)
 
     guard_cfg = args.get("guard") or {}
@@ -861,9 +819,8 @@ def _handle_decision_guard(args: dict[str, Any], **kwargs) -> str:
     questions = _build_guard_questions(guard_cfg.get("instructions", "这个动作是否可以安全执行？true 表示安全可放行。"))
 
     try:
-        guard_engine = _guard_engine_name()
-        _, _, guard_model, _ = _engine_spec(guard_engine)
-        response, elapsed = _run_online(state, questions, timeout, _build_provider(guard_engine))
+        _, guard_model, _ = _engine_spec()
+        response, elapsed = _run_online(state, questions, timeout, _build_provider())
         probability = getattr(response.nouls.get("guard_q"), "noul", None)
         signals = _guard_signals(response)
         raw_conf = getattr(response.choices.get("verdict"), "confidence", None)
@@ -924,7 +881,7 @@ def _handle_decision_review(args: dict[str, Any], **kwargs) -> str:
     cached, cache_key = _cache_hit_json("decision_review", cache_args, state, use_cache)
     if cached is not None:
         return cached
-    if not _jev_tool_available():
+    if not _decision_tool_available():
         _log_journal({"tool": "decision_review", "error": "no_engine", "point": review["point"]})
         return _dump({
             "error": "Decision 在线复核不可用：当前没有可用引擎，本次未做任何复核。",
@@ -934,7 +891,7 @@ def _handle_decision_review(args: dict[str, Any], **kwargs) -> str:
         })
 
     try:
-        _, _, model_name, _ = _engine_spec()
+        _, model_name, _ = _engine_spec()
         response, elapsed = _run_online(state, {"review": question}, timeout, _build_provider())
         answer = getattr(response, "choices", {}).get("review")
         if answer is None:
@@ -966,8 +923,3 @@ def _handle_decision_review(args: dict[str, Any], **kwargs) -> str:
             "adoptable": False,
         })
         return _dump(result)
-
-
-_handle_jev = _handle_decision
-_handle_jev_guard = _handle_decision_guard
-_handle_jev_review = _handle_decision_review

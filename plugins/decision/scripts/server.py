@@ -21,11 +21,6 @@ TOOLS = {
     "decision_review": ("DECISION_REVIEW_SCHEMA", "_handle_decision_review"),
     "decision_guard": ("DECISION_GUARD_SCHEMA", "_handle_decision_guard"),
 }
-LEGACY_TOOL_ALIASES = {
-    "jev": "decision",
-    "jev_review": "decision_review",
-    "jev_guard": "decision_guard",
-}
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
@@ -51,9 +46,8 @@ def tool_definitions(engine: Any) -> list[dict[str, Any]]:
 
 
 def call_tool(engine: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    canonical = LEGACY_TOOL_ALIASES.get(name, name)
     try:
-        _, handler_attr = TOOLS[canonical]
+        _, handler_attr = TOOLS[name]
     except KeyError:
         raise KeyError(f"Unknown tool: {name}") from None
     payload = getattr(engine, handler_attr)(arguments)

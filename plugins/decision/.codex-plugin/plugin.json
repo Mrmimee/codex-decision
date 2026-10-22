@@ -14,8 +14,7 @@
     "routing",
     "guard",
     "openrouter",
-    "elephant",
-    "agnes"
+    "elephant"
   ],
   "skills": "./skills/",
   "interface": {

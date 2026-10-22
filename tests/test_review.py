@@ -65,7 +65,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_rejects_secret_before_network(self):
         with patch.object(engine, "_execute_system_one_with_timeout") as call:
-            result = json.loads(engine._handle_jev_review(
+            result = json.loads(engine._handle_decision_review(
                 review_args(question="Use Authorization: Bearer abcdefghijklmnop for this choice")
             ))
         self.assertEqual(result["status"], "rejected")
@@ -136,24 +136,24 @@ class ReviewTests(unittest.TestCase):
                 "usage": None,
             },
         )()
-        with patch.object(engine, "_jev_tool_available", return_value=True), patch.object(
+        with patch.object(engine, "_decision_tool_available", return_value=True), patch.object(
             engine, "_execute_system_one_with_timeout", return_value=response
         ), patch.object(engine, "_build_provider", return_value=object()):
-            result = json.loads(engine._handle_jev_review(review_args(no_cache=True)))
+            result = json.loads(engine._handle_decision_review(review_args(no_cache=True)))
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["recommendation"], "metric_b")
         self.assertEqual(result["engine"], "test-engine")
 
     def test_unavailable_has_no_false_verdict(self):
-        with patch.object(engine, "_jev_tool_available", return_value=False):
-            result = json.loads(engine._handle_jev_review(review_args(no_cache=True)))
+        with patch.object(engine, "_decision_tool_available", return_value=False):
+            result = json.loads(engine._handle_decision_review(review_args(no_cache=True)))
         self.assertEqual(result["status"], "unavailable")
         self.assertFalse(result["adoptable"])
         self.assertNotIn("recommendation", result)
 
     def test_invalid_input_does_not_call_network(self):
         with patch.object(engine, "_execute_system_one_with_timeout") as call:
-            result = json.loads(engine._handle_jev_review(review_args(primaryChoice="metric_c")))
+            result = json.loads(engine._handle_decision_review(review_args(primaryChoice="metric_c")))
         self.assertEqual(result["status"], "rejected")
         call.assert_not_called()
 

@@ -92,11 +92,6 @@ Do not paste raw JSON unless the user asks for it.
 
 The embedded engine defaults to `baseten/elephant-1:free` through OpenRouter
 and needs `OPENROUTER_API_KEY` (or `DECISION_KEY_FILE` pointing at a single-line key
-file) plus an importable `system_one_adapter`. Set `DECISION_ENGINE=agnes` and
-provide `AGNES_API_KEY` to use the legacy Agnes backend. It never scans your
+file) plus an importable `system_one_adapter`. It never scans your
 Desktop or any other location for secrets. A missing key, missing engine,
 timeout, or failed call returns an explicit `error`, not a fallback verdict.
-
-`decision` and `decision_review` use Elephant by default. `decision_guard` uses Agnes by
-default for conservative risk signals; set `DECISION_GUARD_ENGINE=openrouter` to
-use Elephant for guard as well.

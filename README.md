@@ -9,11 +9,7 @@ tools to Codex through a local stdio server:
   with confidence bands, abstention, and optional shadow mode.
 - `decision_guard` — a six-signal action gate returning `allow` / `ask` / `deny`.
 
-The default decision backend is `baseten/elephant-1:free` through OpenRouter.
-The guard keeps Agnes as its default safety backend because it produced more
-conservative risk signals in testing. Set `DECISION_ENGINE=agnes` to move ordinary
-decisions back to Agnes, or `DECISION_GUARD_ENGINE=openrouter` to move the guard to
-Elephant.
+The decision backend is `baseten/elephant-1:free` through OpenRouter's Decisions API.
 
 ### Self-contained layout
 
@@ -22,16 +18,15 @@ This plugin is fully self-contained (`plugins/decision/decision_engine/`):
 - Cache and audit log live in `%LOCALAPPDATA%\codex-decision\decision\` (override with
   `DECISION_STATE_DIR`), outside the plugin cache so they survive updates.
 - `system_one_adapter` is resolved from `DECISION_VENV` / `DECISION_SITE_PACKAGES`, or a
-  local `~/jev-starter` or `~/.jev` venv.
+  local `~/jev-starter` or `~/.codex-decision` venv.
 
 ## Requirements
 
 - Python with `system-one-adapter[openai]` installed. The launcher picks, in
   order: `DECISION_PYTHON`, `%USERPROFILE%\jev-starter\.venv`, `py -3`, `python`.
-- `OPENROUTER_API_KEY` in the environment for the default
+- `OPENROUTER_API_KEY` in the environment for the
   `baseten/elephant-1:free` backend. For headless setups that cannot export it,
-  point `DECISION_KEY_FILE` at a single-line key file. Set `DECISION_ENGINE=agnes` and
-  provide `AGNES_API_KEY` to use the legacy Agnes backend instead. The engine
+  point `DECISION_KEY_FILE` at a single-line key file. The engine
   never scans your Desktop or any other location for secrets.
 
 ## Install into Codex

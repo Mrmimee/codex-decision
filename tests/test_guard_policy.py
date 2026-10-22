@@ -75,15 +75,15 @@ class GuardPolicyTests(unittest.TestCase):
                 "scores": {
                     "blast_radius": type("ScoreAnswer", (), {"score": 0.0})()
                 },
-                "engine": "agnes",
-                "model": "agnes-3.0-flash",
+                "engine": "openrouter",
+                "model": "baseten/elephant-1:free",
             },
         )()
-        with patch.object(engine, "_guard_tool_available", return_value=True), patch.object(
+        with patch.object(engine, "_decision_tool_available", return_value=True), patch.object(
             engine, "_execute_system_one_with_timeout", return_value=response
         ), patch.object(engine, "_build_provider", return_value=object()):
             result = json.loads(
-                engine._handle_jev_guard({"state": "git status", "no_cache": True})
+                engine._handle_decision_guard({"state": "git status", "no_cache": True})
             )
         self.assertEqual(result["verdict"], "ask")
         self.assertEqual(result["confidence"], 0.3)

@@ -2,13 +2,9 @@
 setlocal
 
 rem Resolve a Python that can import system_one_adapter:
-rem DECISION_PYTHON / JEV_PYTHON, then jev-starter venv, then py/python.
+rem DECISION_PYTHON, then jev-starter venv, then py/python.
 if defined DECISION_PYTHON if exist "%DECISION_PYTHON%" (
   set "PY=%DECISION_PYTHON%"
-  goto run
-)
-if defined JEV_PYTHON if exist "%JEV_PYTHON%" (
-  set "PY=%JEV_PYTHON%"
   goto run
 )
 if exist "%USERPROFILE%\jev-starter\.venv\Scripts\python.exe" (
