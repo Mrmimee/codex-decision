@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -73,6 +74,10 @@ def _extract_answer(node: dict[str, Any], answer: dict[str, Any]) -> Any:
 class DecisionsProvider:
     """Minimal sync provider for OpenRouter's Decisions endpoint."""
 
+    _RETRY_STATUS = (429, 500, 502, 503, 529)
+    _RETRY_ATTEMPTS = 3
+    _RETRY_BASE_DELAY = 0.6
+
     def __init__(self, model_name: str, *, base_url: str, api_key: str) -> None:
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
@@ -98,19 +103,7 @@ class DecisionsProvider:
             "state": document,
             "questions": {name: _question_from_schema(name, node) for name, node in resolved.items()},
         }
-        request = urllib.request.Request(
-            self.base_url + "/alpha/decisions",
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            raise TypeSafeError(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:500]}") from error
-        except urllib.error.URLError as error:
-            raise TypeSafeError(f"Decisions request failed: {error.reason}") from error
+        payload = self._post(body)
 
         raw_answers = payload.get("answers", {})
         answers = {name: _extract_answer(node, raw_answers.get(name, {})) for name, node in resolved.items()}
@@ -120,3 +113,35 @@ class DecisionsProvider:
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
         )
+
+    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+        """POST with retries for transient failures only.
+
+        Retryable: 429/5xx responses, dropped connections, and TLS EOF.
+        A 4xx (bad request, unauthorized, over quota) fails immediately because
+        retrying cannot change the outcome.
+        """
+        request = urllib.request.Request(
+            self.base_url + "/alpha/decisions",
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        last_error: Exception | None = None
+        for attempt in range(self._RETRY_ATTEMPTS):
+            try:
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode("utf-8", "replace")[:500]
+                if error.code not in self._RETRY_STATUS:
+                    raise TypeSafeError(f"HTTP {error.code}: {detail}") from error
+                last_error = error
+            except (urllib.error.URLError, OSError) as error:
+                last_error = error
+            if attempt < self._RETRY_ATTEMPTS - 1:
+                time.sleep(self._RETRY_BASE_DELAY * (2**attempt))
+        raise TypeSafeError(f"Decisions request failed: {last_error}")

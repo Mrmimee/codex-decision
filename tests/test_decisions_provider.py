@@ -1,5 +1,6 @@
 import json
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -139,6 +140,58 @@ class DecisionsProviderTests(unittest.TestCase):
                 }
             },
         )
+
+    def test_retries_transient_network_failure(self):
+        provider = DecisionsProvider(
+            "baseten/elephant-1:free",
+            base_url="https://openrouter.ai/api",
+            api_key="test",
+        )
+        payload = {
+            "answers": {"team": {"type": "choice", "choice": "a", "probabilities": {"a": 1.0, "b": 0.0}}},
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+        calls = {"n": 0}
+
+        def flaky_urlopen(request, timeout):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise OSError("SSL EOF")
+            return Response(payload)
+
+        with patch("urllib.request.urlopen", flaky_urlopen), patch(
+            "time.sleep", lambda *_: None
+        ):
+            result = provider.request(
+                [Message(role="user", content="<document>x</document>")],
+                schema=SCHEMA,
+                structured=True,
+            )
+        self.assertEqual(calls["n"], 3)
+        self.assertIn("team", json.loads(result.text)["answers"])
+
+    def test_does_not_retry_client_error(self):
+        provider = DecisionsProvider(
+            "baseten/elephant-1:free",
+            base_url="https://openrouter.ai/api",
+            api_key="test",
+        )
+        calls = {"n": 0}
+
+        def bad_urlopen(request, timeout):
+            calls["n"] += 1
+            raise urllib.error.HTTPError(
+                request.full_url, 400, "Bad Request", {}, None
+            )
+
+        with patch("urllib.request.urlopen", bad_urlopen):
+            with self.assertRaises(Exception):
+                provider.request(
+                    [Message(role="user", content="<document>x</document>")],
+                    schema=SCHEMA,
+                    structured=True,
+                )
+        self.assertEqual(calls["n"], 1)
 
 
 if __name__ == "__main__":
