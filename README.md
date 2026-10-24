@@ -32,7 +32,7 @@ This plugin is fully self-contained (`plugins/decision/decision_engine/`):
 ## Install into Codex
 
 ```bash
-codex plugin marketplace add Mrmimee/codex-decision
+codex plugin marketplace add Mrmimee/codex-jev
 codex plugin add decision@codex-decision
 ```
 

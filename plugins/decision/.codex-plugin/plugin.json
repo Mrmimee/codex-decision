@@ -6,8 +6,8 @@
   "author": {
     "name": "Mrmimee"
   },
-  "homepage": "https://github.com/Mrmimee/codex-decision",
-  "repository": "https://github.com/Mrmimee/codex-decision",
+  "homepage": "https://github.com/Mrmimee/codex-jev",
+  "repository": "https://github.com/Mrmimee/codex-jev",
   "license": "MIT",
   "keywords": [
     "decision",
@@ -26,7 +26,7 @@
     "capabilities": [
       "Read"
     ],
-    "websiteURL": "https://github.com/Mrmimee/codex-decision",
+    "websiteURL": "https://github.com/Mrmimee/codex-jev",
     "defaultPrompt": [
       "Use JEV to compare these execution paths.",
       "Review my preselected choice with JEV."
