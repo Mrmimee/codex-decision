@@ -1,6 +1,6 @@
-# codex-decision
+# JEV
 
-Calibrated decision engine as a self-contained **Codex plugin** (`decision` v1.0.0). It exposes three MCP
+JEV is a calibrated decision engine packaged as a self-contained **Codex plugin** (`decision` v1.0.1). It exposes three MCP
 tools to Codex through a local stdio server:
 
 - `decision` — structured routing (Choice), yes/no probability (Noul), and scoring (Score),
@@ -41,7 +41,7 @@ Restart Codex (or open a new thread) to load `decision`, `decision_review`, and
 
 ## Semantics
 
-Decision only returns structured judgments; it never calls other tools or grants
+JEV only returns structured judgments; it never calls other tools or grants
 authorization. On a missing key/engine, timeout, or online failure it returns
 `error` with no verdict — an error is never an `allow`.
 
